@@ -33,15 +33,19 @@ public class SignataireRequest_V2 {
     @ApiModelProperty(notes = "Le numéro de téléphone du signataire.", example = "770000000")
     private String telephone;
 
+    @ApiModelProperty(notes = "L'ID de l'application appelante fourni par GAINDE 2000", example = "35")
+    private Integer idApplication;
+
 
     public SignataireRequest_V2() {
 
     }
 
-    public SignataireRequest_V2(String nomSignataire, String cni, String telephone) {
+    public SignataireRequest_V2(String nomSignataire, String cni, String telephone,Integer idApplication) {
         this.nomSignataire = nomSignataire;
         this.cni = cni;
         this.telephone = telephone;
+        this.idApplication = idApplication;
     }
 
     public SignataireRequest_V2(String nomSignataire, String cni) {

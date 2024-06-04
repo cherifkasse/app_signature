@@ -33,6 +33,9 @@ public class Signataire_V2 {
     @NotBlank(message = "Le champ 'cni' est obligatoire")
     private String cni;
 
+    @Column(name = "id_application")
+    private Integer idApplication;
+
     @Column(name = "code_pin")
     private String codePin;
 

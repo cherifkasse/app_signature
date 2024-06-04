@@ -29,6 +29,7 @@ import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
+import java.io.Console;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -58,7 +59,7 @@ import springfox.documentation.swagger2.annotations.EnableSwagger2;
  * @created 19/03/2024/03/2024 - 14:48
  */
 @RestController
-@RequestMapping("/signer/")
+@RequestMapping("/signer/v1.1/")
 @Api(description = "API de signature")
 public class SignerController {
     private static final String ALGORITHM = "AES";
@@ -159,6 +160,7 @@ public class SignerController {
         logger.info("################Début de traitement de la signature#########################");
         int compteurErreur = 0;
         String nomSignataire = "";
+        String userkey = "";
         RestTemplate restTemplate = new RestTemplate();
         String urlAccessBdd = prop.getProperty("url_access");
         String url_signer = urlAccessBdd+"findSignerById/"+id_signer;
@@ -180,23 +182,25 @@ public class SignerController {
             }
 
             if(signataireV2 != null){
-                System.out.println("TESTV2");
+                //System.out.println("TESTV2");
 
                 if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
                     compteurErreur++;
                 }
                 else{
+                    userkey = signataireV2.getSignerKey();
                     nomSignataire = signataireV2.getNomSignataire();
                 }
             }
 
             if(signataire != null){
-                System.out.println("TESTV1");
+                //System.out.println("TESTV1");
 
                 if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
                     compteurErreur++;
                 }
                 else{
+                    userkey = signataireV2.getSignerKey();
                     nomSignataire = signataire.getNomSignataire();
                 }
             }
@@ -250,7 +254,8 @@ public class SignerController {
             ClientWS port = service.getClientWSPort();
             //System.out.println("#####PORT "+port);
             try {
-                setupTLS(port, password, nomSignataire);
+                setupTLS(port, password, userkey.substring(8));
+                System.out.println("#####PORT "+userkey.substring(8));
             } catch (IOException | GeneralSecurityException e1) {
                 // TODO Auto-generated catch block
                 //log.error(e1.getMessage());
@@ -262,6 +267,7 @@ public class SignerController {
                 byte[] fileBytes = file.getBytes();
                 List<byte[]> bytesFile = new ArrayList<>();
                 bytesFile.add(fileBytes);
+                System.out.println("clee de sign :"+signataireV2.getSignerKey());
                 rsp= port.processData(String.valueOf(workerId), null, fileBytes);
                 OperationSignature operationSignature = new OperationSignature();
                 HttpHeaders headers2 = new HttpHeaders();
@@ -269,6 +275,7 @@ public class SignerController {
                 operationSignature.setIdSigner(id_signer);
                 operationSignature.setCodePin(signataireV2.getCodePin());
                 operationSignature.setSignerKey(signataireV2.getSignerKey());
+
                 Date dateOp = new Date();
                 SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                 operationSignature.setDateOperation(sdf.format(dateOp));
@@ -309,12 +316,23 @@ public class SignerController {
         String urlAccess = prop.getProperty("url_access");
         RestTemplate restTemplate = new RestTemplate();
         String url = urlAccess + "findSignerByCni/" + signataireRequest.getCni();
+        String urlIdApp = urlAccess + "findSignerByIdApp/" + signataireRequest.getIdApplication();
         String apiUrl = urlAccess + "enroll";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
         try {
             ResponseEntity<Signataire_V2[]> signataireV2 = restTemplate.getForEntity(url, Signataire_V2[].class);
+            boolean verifWoker = false;
+            if(signataireRequest.getIdApplication() != null){
+                verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(urlIdApp, Boolean.class));
+                if (!verifWoker) {
+                    String retourMessage = "ID Application introuvable!";
+                    logger.info(retourMessage);
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(retourMessage);
+                }
+            }
+
             Signataire_V2[] signatairesArray = signataireV2.getBody();
             assert signatairesArray != null;
             List<Signataire_V2> signatairesList = Arrays.asList(signatairesArray);
@@ -324,6 +342,11 @@ public class SignerController {
                 logger.info(conflictMessage);
                 return ResponseEntity.status(HttpStatus.CONFLICT).body(conflictMessage);
             }
+
+           // boolean verifWoker = Boolean.FALSE.equals(restTemplate.getForEntity(urlIdApp, Boolean.class));
+
+
+
 
             if (signataireRequest.getNomSignataire() == null || signataireRequest.getNomSignataire().isEmpty() ||
                     signataireRequest.getCni() == null || signataireRequest.getCni().isEmpty()) {
