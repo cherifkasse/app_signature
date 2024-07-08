@@ -33,5 +33,8 @@ public class OperationSignature {
     @Column(name = "date_operation")
     private String dateOperation;
 
+    @Column(name = "nom_worker")
+    private String nomWorker;
+
 
 }

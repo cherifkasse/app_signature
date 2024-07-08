@@ -1,11 +1,9 @@
 package com.example.demo.controller;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import  io.swagger.annotations.ApiResponse;
 import com.example.demo.model.*;
 import com.example.demo.wsdl_client.*;
 import io.swagger.annotations.*;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.ExampleObject;
-import io.swagger.v3.oas.annotations.media.Schema;
 import org.apache.cxf.configuration.jsse.TLSClientParameters;
 import org.apache.cxf.configuration.security.AuthorizationPolicy;
 import org.apache.cxf.frontend.ClientProxy;
@@ -29,7 +27,6 @@ import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
-import java.io.Console;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -41,6 +38,8 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.*;
 import java.text.SimpleDateFormat;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import org.springframework.web.client.HttpClientErrorException;
@@ -51,7 +50,6 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.*;
 
 import springfox.documentation.annotations.ApiIgnore;
-import springfox.documentation.swagger2.annotations.EnableSwagger2;
 
 /**
  * @author Cherif KASSE
@@ -93,10 +91,12 @@ public class SignerController {
         }
     }
     private SecretKey getSecretKey(String keyString) {
+        logger.info("Recuperation clé secrete dans getSecretKey: "+keyString);
         byte[] keyBytes = hexStringToByteArray(keyString);
         return new SecretKeySpec(keyBytes, ALGORITHM);
     }
     private static byte[] hexStringToByteArray(String s) {
+        logger.info("Recuperation clé secrete dans hexStringToByteArray:"+s);
         int len = s.length();
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
@@ -107,7 +107,8 @@ public class SignerController {
     }
     public String encrypterPin(@PathVariable String pin) {
         try {
-            SecretKey secretKey = getSecretKey(prop.getProperty("cleDeSecret"));
+            logger.info("########DEBUT PROCESSUS DU CHIFFREMENT DU CODE PIN#########");
+            SecretKey secretKey = getSecretKey(prop.getProperty("cleSecrete"));
             Cipher cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
             cipher.init(Cipher.ENCRYPT_MODE, secretKey, new IvParameterSpec(IV));
             byte[] encryptedBytes = cipher.doFinal(pin.getBytes(StandardCharsets.UTF_8));
@@ -128,11 +129,16 @@ public class SignerController {
             //System.out.println("Chaîne avant remplacement : " + encodedPin);
             //System.out.println("Chaîne après remplacement : " + replacedString);
             // Afficher les indices des "/"
+            logger.info("Code PIN chiffré avec succès !");
+            logger.info("########PROCESSUS DU CHIFFREMENT DU CODE PIN TERMINE#########");
             return replacedString.toString();
         } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException
-                 | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
+                | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
             e.printStackTrace();
-            return "Error during encryption.";
+            String msg = "Erreur lors du chiffrement.";
+            logger.error(msg,e);
+            logger.info("########PROCESSUS DU CHIFFREMENT DU CODE PIN TERMINE#########");
+            return msg;
         }
     }
     DataResponse rsp=null;
@@ -157,8 +163,10 @@ public class SignerController {
             @ApiParam(value="Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file,
             @ApiParam(value="Code pour activer les informations du signataire sur le serveur de signature.") @RequestParam("codePin") String codePin,
             @ApiParam(value="Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer) throws IOException {
-        logger.info("################Début de traitement de la signature#########################");
+        logger.info("################Debut de traitement de la signature#########################");
+
         int compteurErreur = 0;
+        String datePart1="";
         String nomSignataire = "";
         String userkey = "";
         RestTemplate restTemplate = new RestTemplate();
@@ -167,6 +175,7 @@ public class SignerController {
         String url_signataire = urlAccessBdd+"findSignataireById/"+id_signer;
         String url2 = urlAccessBdd+"ajoutOperation";
         String url3 = urlAccessBdd+"isExistedWorker/"+idWorker;
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try{
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
@@ -185,10 +194,25 @@ public class SignerController {
                 //System.out.println("TESTV2");
 
                 if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
+                    logger.info("Code pin lors de la signature: "+signataireV2.getCodePin());
                     compteurErreur++;
                 }
                 else{
+                    compteurErreur = 3;
                     userkey = signataireV2.getSignerKey();
+                    logger.info("Code pin lors de la signature: "+signataireV2.getCodePin());
+                    logger.info("Clé de signature du signataire: "+userkey);
+                    //System.out.println("Code pin lors de la signature: "+signataireV2.getCodePin());
+                    datePart1 = signataireV2.getDateExpiration().split(" ")[0];
+                    LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
+                    LocalDate dateAujourdhui = LocalDate.parse(sdf.format(new Date()), DateTimeFormatter.ISO_LOCAL_DATE);
+                    if(datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration) ) {
+                        logger.info("Certificate Expired!");
+                        //System.out.println("DATEEEE EQUAL :"+sdf.format(new Date()));
+                        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body("Certificate Expired!");
+
+                    }
+
                     nomSignataire = signataireV2.getNomSignataire();
                 }
             }
@@ -197,14 +221,27 @@ public class SignerController {
                 //System.out.println("TESTV1");
 
                 if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: "+signataire.getCode_pin());
                     compteurErreur++;
                 }
                 else{
-                    userkey = signataireV2.getSignerKey();
+                    compteurErreur = 3;
+                    userkey = signataire.getSignerKey();
+                    logger.info("Code pin lors de la signature: "+signataire.getCode_pin());
+                    logger.info("Clé de signature du signataire: "+userkey);
+                    datePart1 = signataire.getDate_expiration().split(" ")[0];
+                    LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
+                    LocalDate dateAujourdhui = LocalDate.parse(sdf.format(new Date()), DateTimeFormatter.ISO_LOCAL_DATE);
+                    if(datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration) ) {
+                        logger.info("Certificate Expired!");
+                        //System.out.println("DATEEEE EQUAL :"+sdf.format(new Date()));
+                        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body("Certificate Expired!");
+                    }
                     nomSignataire = signataire.getNomSignataire();
                 }
             }
-            if(compteurErreur==2){
+           // System.out.println("DATEEEE EQUAL :"+compteurErreur);
+            if(compteurErreur<=2){
                 logger.error("Erreur lors de la signature : Mauvais Code PIN !");
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez fournir un bon code PIN !");
             }
@@ -252,10 +289,10 @@ public class SignerController {
             }
             ClientWSService service = new ClientWSService(wsdlURL);
             ClientWS port = service.getClientWSPort();
-            //System.out.println("#####PORT "+port);
+           // System.out.println("#####PORT "+userkey);
             try {
                 setupTLS(port, password, userkey.substring(8));
-                System.out.println("#####PORT "+userkey.substring(8));
+              //  System.out.println("#####PORT "+userkey.substring(8));
             } catch (IOException | GeneralSecurityException e1) {
                 // TODO Auto-generated catch block
                 //log.error(e1.getMessage());
@@ -277,7 +314,7 @@ public class SignerController {
                 operationSignature.setSignerKey(signataireV2.getSignerKey());
 
                 Date dateOp = new Date();
-                SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+
                 operationSignature.setDateOperation(sdf.format(dateOp));
                 // Créer une requête HTTP avec l'objet OperationSignature dans le corps
                 HttpEntity<OperationSignature> requestEntity = new HttpEntity<>(operationSignature, headers2);
@@ -316,14 +353,23 @@ public class SignerController {
         String urlAccess = prop.getProperty("url_access");
         RestTemplate restTemplate = new RestTemplate();
         String url = urlAccess + "findSignerByCni/" + signataireRequest.getCni();
+        String urlNomSigner = urlAccess + "findSignerBynomSigner/" + signataireRequest.getNomSignataire()+signataireRequest.getIdApplication();
         String urlIdApp = urlAccess + "findSignerByIdApp/" + signataireRequest.getIdApplication();
         String apiUrl = urlAccess + "enroll";
+        String renewUrl = urlAccess + "renew";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
             ResponseEntity<Signataire_V2[]> signataireV2 = restTemplate.getForEntity(url, Signataire_V2[].class);
+            ResponseEntity<Signataire_V2[]> signataireV2_nom = restTemplate.getForEntity(urlNomSigner, Signataire_V2[].class);
             boolean verifWoker = false;
+            if(signataireRequest.getIdApplication() == null || signataireRequest.getNomSignataire() == null
+                    || signataireRequest.getCni() == null){
+                String retourMessage = "Veuillez vérifier si toutes les informations sont renseignées";
+                logger.info(retourMessage);
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(retourMessage);
+            }
             if(signataireRequest.getIdApplication() != null){
                 verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(urlIdApp, Boolean.class));
                 if (!verifWoker) {
@@ -334,13 +380,64 @@ public class SignerController {
             }
 
             Signataire_V2[] signatairesArray = signataireV2.getBody();
+            Signataire_V2[] signatairesArray_noms = signataireV2_nom.getBody();
             assert signatairesArray != null;
+            assert signatairesArray_noms != null;
             List<Signataire_V2> signatairesList = Arrays.asList(signatairesArray);
+            List<Signataire_V2> signatairesList_Noms = Arrays.asList(signatairesArray_noms);
+            String datePart1 ="";
 
             if (!signatairesList.isEmpty()) {
-                String conflictMessage = "Person already exists!";
-                logger.info(conflictMessage);
-                return ResponseEntity.status(HttpStatus.CONFLICT).body(conflictMessage);
+                if(signatairesList_Noms.isEmpty()){
+                    String conflictMessage = "Person already exists!";
+                    logger.info(conflictMessage);
+                    return ResponseEntity.status(HttpStatus.CONFLICT).body(conflictMessage);
+                }
+                //System.out.println("RRRR"+signatairesList.get(0).getNomSignataire());
+                boolean a = signatairesList.get(0).getNomSignataire().equals(signataireRequest.getNomSignataire()+signataireRequest.getIdApplication());
+                //System.out.println("RRRR888"+a);
+                if(signatairesList.get(0).getNomSignataire().equals(signataireRequest.getNomSignataire()+signataireRequest.getIdApplication())){
+                    datePart1 = signatairesList.get(0).getDateExpiration().split(" ")[0];
+                    // Convertir les chaînes de caractères en objets LocalDate
+                    LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
+                    LocalDate dateAujourdhui = LocalDate.parse(sdf.format(new Date()), DateTimeFormatter.ISO_LOCAL_DATE);
+                    if(datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration) ){
+                        ObjectMapper objectMapper = new ObjectMapper();
+
+                        //System.out.println("RRRR888");
+                        String conflictMessage = "Renouvellement en cours ";
+                        logger.info(conflictMessage);
+                        Signataire_V2 signataire_v2 = new Signataire_V2();
+                        HttpHeaders headers2 = new HttpHeaders();
+                        headers2.setContentType(MediaType.APPLICATION_JSON);
+                        signataire_v2.setNomSignataire(signatairesList_Noms.get(0).getNomSignataire());
+                        signataire_v2.setCni(signatairesList.get(0).getCni());
+                        signataire_v2.setTelephone(signatairesList_Noms.get(0).getTelephone());
+                        signataire_v2.setIdApplication(signatairesList_Noms.get(0).getIdApplication());
+
+                        // Créer une requête HTTP avec l'objet OperationSignature dans le corps
+                        HttpEntity<Signataire_V2> requestEntity = new HttpEntity<>(signataire_v2, headers2);
+                        // Envoyer la requête HTTP POST
+                        ResponseEntity<String> responseEntity = restTemplate.postForEntity(renewUrl, requestEntity, String.class);
+                        EnrollResponse_V2 enrollResponse = objectMapper.readValue(responseEntity.getBody(), EnrollResponse_V2.class);
+                        ResponseEntity<Signataire_V2[]> signataireV3 = restTemplate.getForEntity(url, Signataire_V2[].class);
+                        Signataire_V2[] signatairesArrayV3 = signataireV3.getBody();
+                        List<Signataire_V2> signatairesListV3 = Arrays.asList(signatairesArrayV3);
+                        enrollResponse.setCodePin(decryptPin(signatairesListV3.get(0).getCodePin()));
+                        enrollResponse.setId_signer(signatairesList.get(0).getId());
+                        String responseBodyWithCodePin = objectMapper.writeValueAsString(enrollResponse);
+                        logger.info("Enrollment avec succès: " + responseBodyWithCodePin);
+                        return new ResponseEntity<>(responseBodyWithCodePin, HttpStatus.OK);
+
+                        //return ResponseEntity.status(HttpStatus.OK).body(successMessage);
+                    }
+                    else{
+                        String conflictMessage = "Person already exists!";
+                        logger.info(conflictMessage);
+                        return ResponseEntity.status(HttpStatus.CONFLICT).body(conflictMessage);
+                    }
+                }
+
             }
 
            // boolean verifWoker = Boolean.FALSE.equals(restTemplate.getForEntity(urlIdApp, Boolean.class));
@@ -371,6 +468,45 @@ public class SignerController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(generalErrorMessage);
         }
     }
+    public String decryptPin(@PathVariable String pinEncrypted) {
+        try {
+            logger.info("########DEBUT PROCESSUS DU DECHIFFREMENT DU CODE PIN#########");
+            SecretKey secretKey = getSecretKey(prop.getProperty("cleSecrete"));
+            Cipher cipher = Cipher.getInstance(CIPHER_TRANSFORMATION);
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(IV));
+
+            List<Integer> indices = new ArrayList<>();
+            String[] parts = pinEncrypted.split(",");
+            if (parts.length >= 2) {
+                StringBuilder chaineRestauree = new StringBuilder(parts[0]);
+                for (int i = 1; i < parts.length; i++) {
+                    String index = parts[i];
+                    indices.add(Integer.parseInt(index));
+                }
+                for (int index2 : indices) {
+                    chaineRestauree.setCharAt(index2, '/');
+                }
+                //System.out.println(chaineRestauree);
+                byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(chaineRestauree.toString()));
+                return new String(decryptedBytes, StandardCharsets.UTF_8);
+            } else {
+                pinEncrypted = parts[0];
+                byte[] decryptedBytes = cipher.doFinal(Base64.getDecoder().decode(pinEncrypted));
+                logger.info("Code PIN déchiffré avec succès !");
+                logger.info("########PROCESSUS DU DECHIFFREMENT DU CODE PIN TERMINE#########");
+                return new String(decryptedBytes, StandardCharsets.UTF_8);
+            }
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException
+                | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
+            e.printStackTrace();
+            String msg= "Erreur lors du déchiffrement du code PIN";
+            logger.error(msg,e);
+            logger.info("########PROCESSUS DU DECHIFFREMENT DU CODE PIN TERMINE#########");
+            return msg;
+        }
+    }
+
+
     //@ApiIgnore
 
     //////////////////////////////////////////////////////////////
@@ -494,6 +630,17 @@ public class SignerController {
         enrollResponseV2.setCodePin("123456");
 
         return response;
+    }
+
+
+    //////////////////comrise entre deux dates/////////////////////////////////////////////
+    public  boolean isDateCompriseEntre(String dateEntre, String dateDebut, String dateFin) {
+        final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+        LocalDate entre = LocalDate.parse(dateEntre, DATE_FORMATTER);
+        LocalDate debut = LocalDate.parse(dateDebut, DATE_FORMATTER);
+        LocalDate fin = LocalDate.parse(dateFin, DATE_FORMATTER);
+
+        return (entre.isEqual(debut) || entre.isAfter(debut)) && (entre.isEqual(fin) || entre.isBefore(fin));
     }
 
 
