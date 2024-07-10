@@ -48,6 +48,9 @@ public class Signataire_V2 {
     @Column(name = "date_expiration")
     private String dateExpiration;
 
+    @Column(name = "nom_worker")
+    private String nomWorker;
+
     @NotBlank(message = "Le champ 'telephone' est obligatoire")
     @Column(nullable = true)
     private String telephone;

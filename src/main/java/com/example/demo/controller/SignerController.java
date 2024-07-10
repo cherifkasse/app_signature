@@ -1,8 +1,8 @@
 package com.example.demo.controller;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import  io.swagger.annotations.ApiResponse;
+
 import com.example.demo.model.*;
 import com.example.demo.wsdl_client.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.annotations.*;
 import org.apache.cxf.configuration.jsse.TLSClientParameters;
 import org.apache.cxf.configuration.security.AuthorizationPolicy;
@@ -11,14 +11,18 @@ import org.apache.cxf.transport.http.HTTPConduit;
 import org.apache.cxf.transport.http.auth.HttpAuthHeader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+import org.springframework.http.*;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
+import springfox.documentation.annotations.ApiIgnore;
 
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
@@ -41,15 +45,6 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.multipart.MultipartFile;
-import org.springframework.http.*;
-
-import springfox.documentation.annotations.ApiIgnore;
 
 /**
  * @author Cherif KASSE
@@ -175,6 +170,7 @@ public class SignerController {
         String url_signataire = urlAccessBdd+"findSignataireById/"+id_signer;
         String url2 = urlAccessBdd+"ajoutOperation";
         String url3 = urlAccessBdd+"isExistedWorker/"+idWorker;
+        String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try{
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
@@ -312,10 +308,14 @@ public class SignerController {
                 operationSignature.setIdSigner(id_signer);
                 operationSignature.setCodePin(signataireV2.getCodePin());
                 operationSignature.setSignerKey(signataireV2.getSignerKey());
+                Worker worker = restTemplate.getForObject(urlNomWorker, Worker.class);
 
                 Date dateOp = new Date();
 
                 operationSignature.setDateOperation(sdf.format(dateOp));
+                assert worker != null;
+                operationSignature.setNomWorker(worker.getNomWorker());
+
                 // Créer une requête HTTP avec l'objet OperationSignature dans le corps
                 HttpEntity<OperationSignature> requestEntity = new HttpEntity<>(operationSignature, headers2);
                 // Envoyer la requête HTTP POST
@@ -357,6 +357,8 @@ public class SignerController {
         String urlIdApp = urlAccess + "findSignerByIdApp/" + signataireRequest.getIdApplication();
         String apiUrl = urlAccess + "enroll";
         String renewUrl = urlAccess + "renew";
+        String urlNomWorker = urlAccess + "findNomWorkerById/" + signataireRequest.getIdApplication();
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
@@ -414,6 +416,10 @@ public class SignerController {
                         signataire_v2.setCni(signatairesList.get(0).getCni());
                         signataire_v2.setTelephone(signatairesList_Noms.get(0).getTelephone());
                         signataire_v2.setIdApplication(signatairesList_Noms.get(0).getIdApplication());
+                        Worker worker = restTemplate.getForObject(urlNomWorker, Worker.class);
+                        assert worker != null;
+                        System.out.println("xxxxyyyzzzz" + worker.getNomWorker());
+                        signataire_v2.setNomWorker(worker.getNomWorker());
 
                         // Créer une requête HTTP avec l'objet OperationSignature dans le corps
                         HttpEntity<Signataire_V2> requestEntity = new HttpEntity<>(signataire_v2, headers2);
@@ -643,6 +649,71 @@ public class SignerController {
         return (entre.isEqual(debut) || entre.isAfter(debut)) && (entre.isEqual(fin) || entre.isBefore(fin));
     }
 
+    ////////////////////////////// Liste Cert_Sign////////////////////////////////////////////
+    private List<Map<String, Object>> mapToMap(List<Object[]> rawList, String operation) {
+        List<Map<String, Object>> mapList = new ArrayList<>();
+        String date = null;
+        if(Objects.equals(operation, "CERT")){
+            date = "Date Création";
+        }
+        if(Objects.equals(operation, "SIGN")){
+            date = "Date Signature";
+        }
+        for (Object[] raw : rawList) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("Id signataire", ((Number) raw[0]).longValue());
+            map.put(date, raw[1].toString());
+            map.put("Application appelante", raw[2].toString());
+            mapList.add(map);
+        }
+        return mapList;
+    }
+    @GetMapping("liste_cert_sign/{date1}/{date2}/{nomWorker}/{operation}")
+    public ResponseEntity<?> getListCertSign(@PathVariable String date1, @PathVariable String date2, @PathVariable String nomWorker, @PathVariable String operation) {
+        try {
+            logger.info("Début de demande de liste signataire ou opération");
+            RestTemplate restTemplate = new RestTemplate();
+            String urlAccessBdd = prop.getProperty("url_access");
+            String urlFindSigner = urlAccessBdd + "findSignerBynomWorkerBetweenDate/" + date1 + "/" + date2 + "/" + nomWorker;
+            String urlFindOperation = urlAccessBdd + "findOperationBynomWorkerBetweenDate/" + date1 + "/" + date2 + "/" + nomWorker;
+            if (operation.equals("CERT")) {
+                logger.info("Récupération de la liste des signataires");
+                ResponseEntity<List<Object[]>> response = restTemplate.exchange(
+                        urlFindSigner,
+                        HttpMethod.GET,
+                        null,
+                        new ParameterizedTypeReference<List<Object[]>>() {
+                        }
+                );
+                List<Object[]> rawList = response.getBody();
+                List<Map<String, Object>> signataireV2 = mapToMap(rawList,operation);
+                return ResponseEntity.ok(signataireV2);
+            } else if (operation.equals("SIGN")) {
+                logger.info("Récupération de la liste des opérations");
+                ResponseEntity<List<Object[]>> response = restTemplate.exchange(
+                        urlFindOperation,
+                        HttpMethod.GET,
+                        null,
+                        new ParameterizedTypeReference<List<Object[]>>() {
+                        }
+                );
+                List<Object[]> rawList = response.getBody();
+                List<Map<String, Object>> operationList = mapToMap(rawList,operation);
+                return ResponseEntity.ok(operationList);
+            } else {
 
+                logger.warn("Type d'opération non reconnu");
+                return ResponseEntity.badRequest().body("Type d'opération non reconnu");
+            }
+        } catch (HttpStatusCodeException e) {
+            String errorMessage = "Erreur HTTP survenue: " + e.getResponseBodyAsString();
+            logger.error(errorMessage, e);
+            return ResponseEntity.status(e.getStatusCode()).body(errorMessage);
+        } catch (Exception e) {
+            String generalErrorMessage = "Une erreur inattendue est apparue: " + e.getMessage();
+            logger.error(generalErrorMessage, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(generalErrorMessage);
+        }
+    }
 
 }
