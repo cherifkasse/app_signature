@@ -668,6 +668,10 @@ public class SignerController {
         }
         return mapList;
     }
+    // Fonction split date
+    public String[] split_date(String date){
+        return date.split("-");
+    }
     @GetMapping("liste_cert_sign/{date1}/{date2}/{nomWorker}/{operation}")
     public ResponseEntity<?> getListCertSign(@PathVariable String date1, @PathVariable String date2, @PathVariable String nomWorker, @PathVariable String operation) {
         try {
@@ -676,6 +680,15 @@ public class SignerController {
             String urlAccessBdd = prop.getProperty("url_access");
             String urlFindSigner = urlAccessBdd + "findSignerBynomWorkerBetweenDate/" + date1 + "/" + date2 + "/" + nomWorker;
             String urlFindOperation = urlAccessBdd + "findOperationBynomWorkerBetweenDate/" + date1 + "/" + date2 + "/" + nomWorker;
+            if (verifFormatDate(date1))
+                return ResponseEntity.badRequest().body("Vérifier votre format de date 'YYYY-MM-JJ'");
+            if (verifFormatDate(date2))
+                return ResponseEntity.badRequest().body("Vérifier votre format de date 'YYYY-MM-JJ'");
+            if (date1.compareTo(date2) > 0){
+                logger.error("La date de début doit etre inférieur à la date de Fin");
+                return ResponseEntity.badRequest().body("La date de début doit être inférieur à la date de Fin");
+            }
+
             if (operation.equals("CERT")) {
                 logger.info("Récupération de la liste des signataires");
                 ResponseEntity<List<Object[]>> response = restTemplate.exchange(
@@ -714,6 +727,15 @@ public class SignerController {
             logger.error(generalErrorMessage, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(generalErrorMessage);
         }
+    }
+
+    private boolean verifFormatDate(@PathVariable String date2) {
+        if (split_date(date2).length!=3 || split_date(date2)[0].length()!=4 || Integer.parseInt(split_date(date2)[1])<1 || Integer.parseInt(split_date(date2)[1])>12
+                || Integer.parseInt(split_date(date2)[2])<1 || Integer.parseInt(split_date(date2)[2])>31){
+            logger.error("Vérifier votre format de date");
+            return true;
+        }
+        return false;
     }
 
 }
