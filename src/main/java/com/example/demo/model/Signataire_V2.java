@@ -26,6 +26,8 @@ public class Signataire_V2 {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
+    private Integer idSigner;
+
     @NotBlank(message = "Le champ 'nomSignataire' est obligatoire")
     @Column(name = "nom_signataire")
     private String nomSignataire;
