@@ -142,7 +142,7 @@ public class SignerController {
     @ApiResponses(value = {
             @ApiResponse(code = 200, message = "Le document a été signé avec succès\n\nParamètres de sortie:\n\n" +
                     "\t{\n\n\t    Document signé sous format tableau de bytes\n\n\t}", examples = @Example(@ExampleProperty(mediaType = "application/pdf", value = "extrait du PDF signé"))),
-            @ApiResponse(code = 204, message = "Expiration du certificat"),
+            @ApiResponse(code = 402, message = "Certificate expired"),
             @ApiResponse(code = 404, message = "ID application introuvable"),
             @ApiResponse(code = 400, message = "La requête est mal formée ou incomplète"),
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
@@ -430,7 +430,7 @@ public class SignerController {
                         Signataire_V2[] signatairesArrayV3 = signataireV3.getBody();
                         List<Signataire_V2> signatairesListV3 = Arrays.asList(signatairesArrayV3);
                         enrollResponse.setCodePin(decryptPin(signatairesListV3.get(0).getCodePin()));
-                        enrollResponse.setId_signer(signatairesList.get(0).getId());
+                        enrollResponse.setId_signer(signatairesList.get(0).getIdSigner());
                         String responseBodyWithCodePin = objectMapper.writeValueAsString(enrollResponse);
                         logger.info("Enrollment avec succès: " + responseBodyWithCodePin);
                         return new ResponseEntity<>(responseBodyWithCodePin, HttpStatus.OK);
@@ -673,7 +673,17 @@ public class SignerController {
         return date.split("-");
     }
     @GetMapping("liste_cert_sign/{date1}/{date2}/{nomWorker}/{operation}")
-    public ResponseEntity<?> getListCertSign(@PathVariable String date1, @PathVariable String date2, @PathVariable String nomWorker, @PathVariable String operation) {
+    @ApiOperation(value="Cette  opération renvoie une liste de signataires ou d'opérations de signature selon le type de l'opération, une plage de date et le nom de l'application appelante.")
+    @ApiResponses(value = {
+            @ApiResponse(code = 200, message = "Parametre de sortie : la liste de signataire ou d'operation de signature"),
+            @ApiResponse(code = 400, message = "Format de date ou type d'opératoin non reconnue"),
+            @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
+    })
+    public ResponseEntity<?> getListCertSign(
+            @ApiParam(value="La date de début pour la recherche avec le format 'YYYY-MM-JJ'") @PathVariable String date1,
+            @ApiParam(value="La date de fin pour la recherche avec le format 'YYYY-MM-JJ'") @PathVariable String date2,
+            @ApiParam(value="Le nom de l'application appelante") @PathVariable String nomWorker,
+            @ApiParam(value="Le type d'opération: CERT ou SIGN") @PathVariable String operation) {
         try {
             logger.info("Début de demande de liste signataire ou opération");
             RestTemplate restTemplate = new RestTemplate();
@@ -686,7 +696,7 @@ public class SignerController {
                 return ResponseEntity.badRequest().body("Vérifier votre format de date 'YYYY-MM-JJ'");
             if (date1.compareTo(date2) > 0){
                 logger.error("La date de début doit etre inférieur à la date de Fin");
-                return ResponseEntity.badRequest().body("La date de début doit être inférieur à la date de Fin");
+                return ResponseEntity.badRequest().body("La date de début doit être inférieure à la date de Fin");
             }
 
             if (operation.equals("CERT")) {
