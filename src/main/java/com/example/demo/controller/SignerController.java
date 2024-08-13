@@ -1,6 +1,7 @@
 package com.example.demo.controller;
 
 import com.example.demo.model.*;
+import com.example.demo.utils.QRCodeGenerator;
 import com.example.demo.wsdl_client.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.annotations.*;
@@ -9,6 +10,10 @@ import org.apache.cxf.configuration.security.AuthorizationPolicy;
 import org.apache.cxf.frontend.ClientProxy;
 import org.apache.cxf.transport.http.HTTPConduit;
 import org.apache.cxf.transport.http.auth.HttpAuthHeader;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -27,13 +32,14 @@ import springfox.documentation.annotations.ApiIgnore;
 import javax.crypto.*;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
+import javax.imageio.ImageIO;
 import javax.net.ssl.KeyManager;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.io.*;
 import java.lang.reflect.Proxy;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -45,6 +51,7 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.List;
 
 /**
  * @author Cherif KASSE
@@ -68,7 +75,8 @@ public class SignerController {
     public String hello() {
         return "Gooooooooooodz";
     }
-    public SignerController(){
+
+    public SignerController() {
         try (InputStream input = SignerController.class.getClassLoader().getResourceAsStream("configWin.properties")) {
 
             prop = new Properties();
@@ -85,13 +93,15 @@ public class SignerController {
 
         }
     }
+
     private SecretKey getSecretKey(String keyString) {
-        logger.info("Recuperation clé secrete dans getSecretKey: "+keyString);
+        //logger.info("Recuperation clé secrete dans getSecretKey: "+keyString);
         byte[] keyBytes = hexStringToByteArray(keyString);
         return new SecretKeySpec(keyBytes, ALGORITHM);
     }
+
     private static byte[] hexStringToByteArray(String s) {
-        logger.info("Recuperation clé secrete dans hexStringToByteArray:"+s);
+        //logger.info("Recuperation clé secrete dans hexStringToByteArray:"+s);
         int len = s.length();
         byte[] data = new byte[len / 2];
         for (int i = 0; i < len; i += 2) {
@@ -100,6 +110,7 @@ public class SignerController {
         }
         return data;
     }
+
     public String encrypterPin(@PathVariable String pin) {
         try {
             logger.info("########DEBUT PROCESSUS DU CHIFFREMENT DU CODE PIN#########");
@@ -128,17 +139,19 @@ public class SignerController {
             logger.info("########PROCESSUS DU CHIFFREMENT DU CODE PIN TERMINE#########");
             return replacedString.toString();
         } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException
-                | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
+                 | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
             e.printStackTrace();
             String msg = "Erreur lors du chiffrement.";
-            logger.error(msg,e);
+            logger.error(msg, e);
             logger.info("########PROCESSUS DU CHIFFREMENT DU CODE PIN TERMINE#########");
             return msg;
         }
     }
-    DataResponse rsp=null;
+
+    DataResponse rsp = null;
+
     @PostMapping("sign_document/{id_signer}")
-    @ApiOperation(value="Cette opération permet à l'utilisateur de signer un document. Le document pdf à signer est envoyé sous format de tableau de bytes (binaire).")
+    @ApiOperation(value = "Cette opération permet à l'utilisateur de signer un document. Le document pdf à signer est envoyé sous format de tableau de bytes (binaire).")
     @ApiResponses(value = {
             @ApiResponse(code = 200, message = "Le document a été signé avec succès\n\nParamètres de sortie:\n\n" +
                     "\t{\n\n\t    Document signé sous format tableau de bytes\n\n\t}", examples = @Example(@ExampleProperty(mediaType = "application/pdf", value = "extrait du PDF signé"))),
@@ -149,60 +162,59 @@ public class SignerController {
     })
     @ApiImplicitParams({
             @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int", paramType = "query", example = "123"),
-           // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file", paramType = "formData",example = "exemple.pdf"),
+            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file", paramType = "formData",example = "exemple.pdf"),
             @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String", paramType = "query", example = "1234"),
             @ApiImplicitParam(name = "id_signer", value = "Numéro unique d'enrôlement du signataire.", dataType = "int", paramType = "path", example = "456")
     })
     public ResponseEntity<?> Signature_base2(
-            @ApiParam(value="ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value="workerId") Integer idWorker,
-            @ApiParam(value="Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file,
-            @ApiParam(value="Code pour activer les informations du signataire sur le serveur de signature.") @RequestParam("codePin") String codePin,
-            @ApiParam(value="Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer) throws IOException {
+            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId") Integer idWorker,
+            @ApiParam(value = "Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file,
+            @ApiParam(value = "Code pour activer les informations du signataire sur le serveur de signature.") @RequestParam("codePin") String codePin,
+            @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer) throws IOException {
         logger.info("################Debut de traitement de la signature#########################");
 
         int compteurErreur = 0;
-        String datePart1="";
+        String datePart1 = "";
         String nomSignataire = "";
         String userkey = "";
         RestTemplate restTemplate = new RestTemplate();
         String urlAccessBdd = prop.getProperty("url_access");
-        String url_signer = urlAccessBdd+"findSignerById/"+id_signer;
-        String url_signataire = urlAccessBdd+"findSignataireById/"+id_signer;
-        String url2 = urlAccessBdd+"ajoutOperation";
-        String url3 = urlAccessBdd+"isExistedWorker/"+idWorker;
+        String url_signer = urlAccessBdd + "findSignerById/" + id_signer;
+        String url_signataire = urlAccessBdd + "findSignataireById/" + id_signer;
+        String url2 = urlAccessBdd + "ajoutOperation";
+        String url3 = urlAccessBdd + "isExistedWorker/" + idWorker;
         String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
-        try{
+        try {
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
-            if(idWorker == null){
+            if (idWorker == null) {
                 logger.error("Erreur lors de la signature : ID Application introuvable !");
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body("ID Application introuvable !");
             }
             int workerId = idWorker != null ? idWorker.intValue() : 0;
-            if(signataireV2 == null && signataire == null){
+            if (signataireV2 == null && signataire == null) {
                 logger.error("Erreur lors de la signature : Utilisateur inconnu !");
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Utilisateur inconnu !");
             }
 
-            if(signataireV2 != null){
+            if (signataireV2 != null) {
                 //System.out.println("TESTV2");
 
                 if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
-                    logger.info("Code pin lors de la signature: "+signataireV2.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
                     compteurErreur++;
-                }
-                else{
+                } else {
                     compteurErreur = 3;
                     userkey = signataireV2.getSignerKey();
-                    logger.info("Code pin lors de la signature: "+signataireV2.getCodePin());
-                    logger.info("Clé de signature du signataire: "+userkey);
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                    logger.info("Clé de signature du signataire: " + userkey);
                     //System.out.println("Code pin lors de la signature: "+signataireV2.getCodePin());
                     datePart1 = signataireV2.getDateExpiration().split(" ")[0];
                     LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
                     LocalDate dateAujourdhui = LocalDate.parse(sdf.format(new Date()), DateTimeFormatter.ISO_LOCAL_DATE);
-                    if(datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration) ) {
+                    if (datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration)) {
                         logger.info("Certificate Expired!");
                         //System.out.println("DATEEEE EQUAL :"+sdf.format(new Date()));
                         return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body("Certificate Expired!");
@@ -213,22 +225,21 @@ public class SignerController {
                 }
             }
 
-            if(signataire != null){
+            if (signataire != null) {
                 //System.out.println("TESTV1");
 
                 if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
-                    logger.info("Code pin lors de la signature: "+signataire.getCode_pin());
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     compteurErreur++;
-                }
-                else{
+                } else {
                     compteurErreur = 3;
                     userkey = signataire.getSignerKey();
-                    logger.info("Code pin lors de la signature: "+signataire.getCode_pin());
-                    logger.info("Clé de signature du signataire: "+userkey);
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
+                    logger.info("Clé de signature du signataire: " + userkey);
                     datePart1 = signataire.getDate_expiration().split(" ")[0];
                     LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
                     LocalDate dateAujourdhui = LocalDate.parse(sdf.format(new Date()), DateTimeFormatter.ISO_LOCAL_DATE);
-                    if(datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration) ) {
+                    if (datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration)) {
                         logger.info("Certificate Expired!");
                         //System.out.println("DATEEEE EQUAL :"+sdf.format(new Date()));
                         return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body("Certificate Expired!");
@@ -236,8 +247,8 @@ public class SignerController {
                     nomSignataire = signataire.getNomSignataire();
                 }
             }
-           // System.out.println("DATEEEE EQUAL :"+compteurErreur);
-            if(compteurErreur<=2){
+            // System.out.println("DATEEEE EQUAL :"+compteurErreur);
+            if (compteurErreur <= 2) {
                 logger.error("Erreur lors de la signature : Mauvais Code PIN !");
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez fournir un bon code PIN !");
             }
@@ -246,7 +257,7 @@ public class SignerController {
                 logger.error("Erreur lors de la signature : Fichier introuvable !");
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez selectionner un fichier !");
             }
-            if(!verifWoker){
+            if (!verifWoker) {
                 logger.error("Erreur lors de la signature : ID Application introuvable !");
                 return ResponseEntity.status(HttpStatus.NOT_FOUND).body("ID Application introuvable !");
             }
@@ -255,7 +266,7 @@ public class SignerController {
 
             //headers.add("X-Keyfactor-Requested-With","");
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            body.add("filereceivefile", new ByteArrayResource(file.getBytes()){
+            body.add("filereceivefile", new ByteArrayResource(file.getBytes()) {
                 @Override
                 public String getFilename() {
                     return file.getOriginalFilename();
@@ -276,19 +287,19 @@ public class SignerController {
 
 
             //QName serviceName = new QName("http://www.confiancefactory.com/", "SignServerUser_Cert");
-            URL wsdlURL=null;
+            URL wsdlURL = null;
             try {
-                wsdlURL = new URL(serviceURL );
+                wsdlURL = new URL(serviceURL);
             } catch (MalformedURLException e) {
                 // TODO Auto-generated catch block
                 e.printStackTrace();
             }
             ClientWSService service = new ClientWSService(wsdlURL);
             ClientWS port = service.getClientWSPort();
-           // System.out.println("#####PORT "+userkey);
+            // System.out.println("#####PORT "+userkey);
             try {
                 setupTLS(port, password, userkey.substring(8));
-              //  System.out.println("#####PORT "+userkey.substring(8));
+                //  System.out.println("#####PORT "+userkey.substring(8));
             } catch (IOException | GeneralSecurityException e1) {
                 // TODO Auto-generated catch block
                 //log.error(e1.getMessage());
@@ -300,8 +311,8 @@ public class SignerController {
                 byte[] fileBytes = file.getBytes();
                 List<byte[]> bytesFile = new ArrayList<>();
                 bytesFile.add(fileBytes);
-                System.out.println("clee de sign :"+signataireV2.getSignerKey());
-                rsp= port.processData(String.valueOf(workerId), null, fileBytes);
+                System.out.println("clee de sign :" + signataireV2.getSignerKey());
+                rsp = port.processData(String.valueOf(workerId), null, fileBytes);
                 OperationSignature operationSignature = new OperationSignature();
                 HttpHeaders headers2 = new HttpHeaders();
                 headers2.setContentType(MediaType.APPLICATION_JSON);
@@ -330,17 +341,17 @@ public class SignerController {
             }
             //logger.info("Document signé avec succès");
 
-            return ResponseEntity.ok(rsp.getData()) ;
-        }
-        catch (Exception e) {
+            return ResponseEntity.ok(rsp.getData());
+        } catch (Exception e) {
             String errorMessage = "Une erreur est survenue lors de la signature : " + e.getMessage();
             logger.error(errorMessage, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorMessage);
         }
 
     }
+
     @PostMapping("enroll")
-    @ApiOperation(value="Ce chapitre décrit toutes les opérations exposées par le service de gestion des opérations d’enrôlement d’un signataire. Elle permet à une application d’envoyer les informations nécessaires à l’enrôlement d’un signataire sur le serveur de signature.")
+    @ApiOperation(value = "Ce chapitre décrit toutes les opérations exposées par le service de gestion des opérations d’enrôlement d’un signataire. Elle permet à une application d’envoyer les informations nécessaires à l’enrôlement d’un signataire sur le serveur de signature.")
     @ApiResponses(value = {
             @ApiResponse(code = 200, message = "Le signataire a été enrôlé avec succès\n\nParamètres de sortie:\n\n" +
                     "\t{\n\n\t    codePin: Code PIN du signataire\n\n\t    IdSignataire: ID du signataire\n\n\t}"),
@@ -353,7 +364,7 @@ public class SignerController {
         String urlAccess = prop.getProperty("url_access");
         RestTemplate restTemplate = new RestTemplate();
         String url = urlAccess + "findSignerByCni/" + signataireRequest.getCni();
-        String urlNomSigner = urlAccess + "findSignerBynomSigner/" + signataireRequest.getNomSignataire()+signataireRequest.getIdApplication();
+        String urlNomSigner = urlAccess + "findSignerBynomSigner/" + signataireRequest.getNomSignataire() + signataireRequest.getIdApplication();
         String urlIdApp = urlAccess + "findSignerByIdApp/" + signataireRequest.getIdApplication();
         String apiUrl = urlAccess + "enroll";
         String renewUrl = urlAccess + "renew";
@@ -366,13 +377,13 @@ public class SignerController {
             ResponseEntity<Signataire_V2[]> signataireV2 = restTemplate.getForEntity(url, Signataire_V2[].class);
             ResponseEntity<Signataire_V2[]> signataireV2_nom = restTemplate.getForEntity(urlNomSigner, Signataire_V2[].class);
             boolean verifWoker = false;
-            if(signataireRequest.getIdApplication() == null || signataireRequest.getNomSignataire() == null
-                    || signataireRequest.getCni() == null){
+            if (signataireRequest.getIdApplication() == null || signataireRequest.getNomSignataire() == null
+                    || signataireRequest.getCni() == null) {
                 String retourMessage = "Veuillez vérifier si toutes les informations sont renseignées";
                 logger.info(retourMessage);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(retourMessage);
             }
-            if(signataireRequest.getIdApplication() != null){
+            if (signataireRequest.getIdApplication() != null) {
                 verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(urlIdApp, Boolean.class));
                 if (!verifWoker) {
                     String retourMessage = "ID Application introuvable!";
@@ -387,23 +398,23 @@ public class SignerController {
             assert signatairesArray_noms != null;
             List<Signataire_V2> signatairesList = Arrays.asList(signatairesArray);
             List<Signataire_V2> signatairesList_Noms = Arrays.asList(signatairesArray_noms);
-            String datePart1 ="";
+            String datePart1 = "";
 
             if (!signatairesList.isEmpty()) {
-                if(signatairesList_Noms.isEmpty()){
+                if (signatairesList_Noms.isEmpty()) {
                     String conflictMessage = "Person already exists!";
                     logger.info(conflictMessage);
                     return ResponseEntity.status(HttpStatus.CONFLICT).body(conflictMessage);
                 }
                 //System.out.println("RRRR"+signatairesList.get(0).getNomSignataire());
-                boolean a = signatairesList.get(0).getNomSignataire().equals(signataireRequest.getNomSignataire()+signataireRequest.getIdApplication());
+                boolean a = signatairesList.get(0).getNomSignataire().equals(signataireRequest.getNomSignataire() + signataireRequest.getIdApplication());
                 //System.out.println("RRRR888"+a);
-                if(signatairesList.get(0).getNomSignataire().equals(signataireRequest.getNomSignataire()+signataireRequest.getIdApplication())){
+                if (signatairesList.get(0).getNomSignataire().equals(signataireRequest.getNomSignataire() + signataireRequest.getIdApplication())) {
                     datePart1 = signatairesList.get(0).getDateExpiration().split(" ")[0];
                     // Convertir les chaînes de caractères en objets LocalDate
                     LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
                     LocalDate dateAujourdhui = LocalDate.parse(sdf.format(new Date()), DateTimeFormatter.ISO_LOCAL_DATE);
-                    if(datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration) ){
+                    if (datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration)) {
                         ObjectMapper objectMapper = new ObjectMapper();
 
                         //System.out.println("RRRR888");
@@ -436,8 +447,7 @@ public class SignerController {
                         return new ResponseEntity<>(responseBodyWithCodePin, HttpStatus.OK);
 
                         //return ResponseEntity.status(HttpStatus.OK).body(successMessage);
-                    }
-                    else{
+                    } else {
                         String conflictMessage = "Person already exists!";
                         logger.info(conflictMessage);
                         return ResponseEntity.status(HttpStatus.CONFLICT).body(conflictMessage);
@@ -446,9 +456,7 @@ public class SignerController {
 
             }
 
-           // boolean verifWoker = Boolean.FALSE.equals(restTemplate.getForEntity(urlIdApp, Boolean.class));
-
-
+            // boolean verifWoker = Boolean.FALSE.equals(restTemplate.getForEntity(urlIdApp, Boolean.class));
 
 
             if (signataireRequest.getNomSignataire() == null || signataireRequest.getNomSignataire().isEmpty() ||
@@ -474,6 +482,7 @@ public class SignerController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(generalErrorMessage);
         }
     }
+
     public String decryptPin(@PathVariable String pinEncrypted) {
         try {
             logger.info("########DEBUT PROCESSUS DU DECHIFFREMENT DU CODE PIN#########");
@@ -503,10 +512,10 @@ public class SignerController {
                 return new String(decryptedBytes, StandardCharsets.UTF_8);
             }
         } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException
-                | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
+                 | InvalidAlgorithmParameterException | IllegalBlockSizeException | BadPaddingException e) {
             e.printStackTrace();
-            String msg= "Erreur lors du déchiffrement du code PIN";
-            logger.error(msg,e);
+            String msg = "Erreur lors du déchiffrement du code PIN";
+            logger.error(msg, e);
             logger.info("########PROCESSUS DU DECHIFFREMENT DU CODE PIN TERMINE#########");
             return msg;
         }
@@ -518,7 +527,7 @@ public class SignerController {
     //////////////////////////////////////////////////////////////
 
     private void setupTLS(ClientWS port, String keyPassword, String username)
-            throws FileNotFoundException, IOException, GeneralSecurityException {
+            throws IOException, GeneralSecurityException {
 
         // String filename = chemin_keystore.trim()+"ejbca_auth_jks.jks";
         // String filenameTrust = chemin_keystore.trim()+"ejbca_truststore.jks";
@@ -595,7 +604,7 @@ public class SignerController {
 
     ///////////////////////////DEPOT JSUTIFICATIF
     @PostMapping("depot/{idSignataire}")
-    @ApiOperation(value="Cette section permet à l’application métier qui a effectué un enrôlement de téléverser une copie d'un document d'identité pour un signataire existant dans le système. En téléversant une pièce d'identité, les opérateurs du centre d’enregistrement peuvent vérifier et authentifier l'identité du signataire. Cette fonctionnalité améliore les mesures de sécurité et garantit le respect des protocoles de vérification d'identité.")
+    @ApiOperation(value = "Cette section permet à l’application métier qui a effectué un enrôlement de téléverser une copie d'un document d'identité pour un signataire existant dans le système. En téléversant une pièce d'identité, les opérateurs du centre d’enregistrement peuvent vérifier et authentifier l'identité du signataire. Cette fonctionnalité améliore les mesures de sécurité et garantit le respect des protocoles de vérification d'identité.")
     @ApiResponses(value = {
             @ApiResponse(code = 200, message = "Le fichier a été téléchargé avec succès", response = String.class),
             @ApiResponse(code = 400, message = "L’ID du signataire n’existe pas ou aucun fichier n’a été fourni"),
@@ -606,13 +615,13 @@ public class SignerController {
             @ApiImplicitParam(name = "piece_cni", value = "Le document justificatif de la pièce d'identité (photo, pdf, ...) sous format tableau de bytes.", dataType = "file", paramType = "query"),
     })
     public ResponseEntity<String> uploadPieceIdentite(@PathVariable Integer idSignataire,
-                                                      @RequestParam("piece_cni") @ApiParam(value = "Le document justificatif de la pièce d'identité (photo, pdf, ...) sous format tableau de bytes.") MultipartFile file){
+                                                      @RequestParam("piece_cni") @ApiParam(value = "Le document justificatif de la pièce d'identité (photo, pdf, ...) sous format tableau de bytes.") MultipartFile file) {
         if (file.isEmpty()) {
-            return  ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Fichier non existant !");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Fichier non existant !");
         }
         RestTemplate restTemplate = new RestTemplate();
         String urlAccessBdd = prop.getProperty("url_access");
-        String url = urlAccessBdd+"depot/"+idSignataire;
+        String url = urlAccessBdd + "depot/" + idSignataire;
         HttpHeaders headers_upload = new HttpHeaders();
         headers_upload.setContentType(MediaType.MULTIPART_FORM_DATA);
         MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
@@ -640,7 +649,7 @@ public class SignerController {
 
 
     //////////////////comrise entre deux dates/////////////////////////////////////////////
-    public  boolean isDateCompriseEntre(String dateEntre, String dateDebut, String dateFin) {
+    public boolean isDateCompriseEntre(String dateEntre, String dateDebut, String dateFin) {
         final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate entre = LocalDate.parse(dateEntre, DATE_FORMATTER);
         LocalDate debut = LocalDate.parse(dateDebut, DATE_FORMATTER);
@@ -653,10 +662,10 @@ public class SignerController {
     private List<Map<String, Object>> mapToMap(List<Object[]> rawList, String operation) {
         List<Map<String, Object>> mapList = new ArrayList<>();
         String date = null;
-        if(Objects.equals(operation, "CERT")){
+        if (Objects.equals(operation, "CERT")) {
             date = "Date Création";
         }
-        if(Objects.equals(operation, "SIGN")){
+        if (Objects.equals(operation, "SIGN")) {
             date = "Date Signature";
         }
         for (Object[] raw : rawList) {
@@ -668,22 +677,24 @@ public class SignerController {
         }
         return mapList;
     }
+
     // Fonction split date
-    public String[] split_date(String date){
+    public String[] split_date(String date) {
         return date.split("-");
     }
+
     @GetMapping("liste_cert_sign/{date1}/{date2}/{nomWorker}/{operation}")
-    @ApiOperation(value="Cette  opération renvoie une liste de signataires ou d'opérations de signature selon le type de l'opération, une plage de date et le nom de l'application appelante.")
+    @ApiOperation(value = "Cette  opération renvoie une liste de signataires ou d'opérations de signature selon le type de l'opération, une plage de date et le nom de l'application appelante.")
     @ApiResponses(value = {
             @ApiResponse(code = 200, message = "Parametre de sortie : la liste de signataire ou d'operation de signature"),
             @ApiResponse(code = 400, message = "Format de date ou type d'opératoin non reconnue"),
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
     public ResponseEntity<?> getListCertSign(
-            @ApiParam(value="La date de début pour la recherche avec le format 'YYYY-MM-JJ'") @PathVariable String date1,
-            @ApiParam(value="La date de fin pour la recherche avec le format 'YYYY-MM-JJ'") @PathVariable String date2,
-            @ApiParam(value="Le nom de l'application appelante") @PathVariable String nomWorker,
-            @ApiParam(value="Le type d'opération: CERT ou SIGN") @PathVariable String operation) {
+            @ApiParam(value = "La date de début pour la recherche avec le format 'YYYY-MM-JJ'") @PathVariable String date1,
+            @ApiParam(value = "La date de fin pour la recherche avec le format 'YYYY-MM-JJ'") @PathVariable String date2,
+            @ApiParam(value = "Le nom de l'application appelante") @PathVariable String nomWorker,
+            @ApiParam(value = "Le type d'opération: CERT ou SIGN") @PathVariable String operation) {
         try {
             logger.info("Début de demande de liste signataire ou opération");
             RestTemplate restTemplate = new RestTemplate();
@@ -694,7 +705,7 @@ public class SignerController {
                 return ResponseEntity.badRequest().body("Vérifier votre format de date 'YYYY-MM-JJ'");
             if (verifFormatDate(date2))
                 return ResponseEntity.badRequest().body("Vérifier votre format de date 'YYYY-MM-JJ'");
-            if (date1.compareTo(date2) > 0){
+            if (date1.compareTo(date2) > 0) {
                 logger.error("La date de début doit etre inférieur à la date de Fin");
                 return ResponseEntity.badRequest().body("La date de début doit être inférieure à la date de Fin");
             }
@@ -709,7 +720,7 @@ public class SignerController {
                         }
                 );
                 List<Object[]> rawList = response.getBody();
-                List<Map<String, Object>> signataireV2 = mapToMap(rawList,operation);
+                List<Map<String, Object>> signataireV2 = mapToMap(rawList, operation);
                 return ResponseEntity.ok(signataireV2);
             } else if (operation.equals("SIGN")) {
                 logger.info("Récupération de la liste des opérations");
@@ -721,7 +732,7 @@ public class SignerController {
                         }
                 );
                 List<Object[]> rawList = response.getBody();
-                List<Map<String, Object>> operationList = mapToMap(rawList,operation);
+                List<Map<String, Object>> operationList = mapToMap(rawList, operation);
                 return ResponseEntity.ok(operationList);
             } else {
 
@@ -740,12 +751,269 @@ public class SignerController {
     }
 
     private boolean verifFormatDate(@PathVariable String date2) {
-        if (split_date(date2).length!=3 || split_date(date2)[0].length()!=4 || Integer.parseInt(split_date(date2)[1])<1 || Integer.parseInt(split_date(date2)[1])>12
-                || Integer.parseInt(split_date(date2)[2])<1 || Integer.parseInt(split_date(date2)[2])>31){
+        if (split_date(date2).length != 3 || split_date(date2)[0].length() != 4 || Integer.parseInt(split_date(date2)[1]) < 1 || Integer.parseInt(split_date(date2)[1]) > 12
+                || Integer.parseInt(split_date(date2)[2]) < 1 || Integer.parseInt(split_date(date2)[2]) > 31) {
             logger.error("Vérifier votre format de date");
             return true;
         }
         return false;
+    }
+
+    ///////////////////////////TEST SIGNATURE AVEC CODE QR/////////////////////////////////////////////////
+    @PostMapping("sign_document_qr_code/{id_signer}")
+    @ApiOperation(value = "Cette opération permet à l'utilisateur de signer un document. Le document pdf à signer est envoyé sous format de tableau de bytes (binaire).")
+    @ApiResponses(value = {
+            @ApiResponse(code = 200, message = "Le document a été signé avec succès\n\nParamètres de sortie:\n\n" +
+                    "\t{\n\n\t    Document signé sous format tableau de bytes\n\n\t}", examples = @Example(@ExampleProperty(mediaType = "application/pdf", value = "extrait du PDF signé"))),
+            @ApiResponse(code = 402, message = "Certificate expired"),
+            @ApiResponse(code = 404, message = "ID application introuvable"),
+            @ApiResponse(code = 400, message = "La requête est mal formée ou incomplète"),
+            @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
+    })
+    @ApiImplicitParams({
+            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int", paramType = "query", example = "123"),
+            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file", paramType = "formData",example = "exemple.pdf"),
+            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String", paramType = "query", example = "1234"),
+            @ApiImplicitParam(name = "id_signer", value = "Numéro unique d'enrôlement du signataire.", dataType = "int", paramType = "path", example = "456"),
+            @ApiImplicitParam(name = "X", value = "Coordonnée X pour la position du code QR.", dataType = "int", paramType = "path", example = "100"),
+            @ApiImplicitParam(name = "Y", value = "Coordonnée Y pour la position du code QR.", dataType = "int", paramType = "path", example = "100"),
+    })
+    public ResponseEntity<?> Signature_base_qr_code(
+            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId") Integer idWorker,
+            @ApiParam(value = "Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file,
+            @ApiParam(value = "Code pour activer les informations du signataire sur le serveur de signature.") @RequestParam("codePin") String codePin,
+            @ApiParam(value = "Coordonnée X pour la position du code QR.") @RequestParam(value = "X", defaultValue = "0") Float posX,
+            @ApiParam(value = "Coordonnée Y pour la position du code QR.") @RequestParam(value = "Y", defaultValue = "0") Float posY,
+            @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer) throws IOException {
+        logger.info("################Debut de traitement de la signature#########################");
+
+        int compteurErreur = 0;
+        String datePart1 = "";
+        String nomSignataire = "";
+        String userkey = "";
+        RestTemplate restTemplate = new RestTemplate();
+        String urlAccessBdd = prop.getProperty("url_access");
+        String url_signer = urlAccessBdd + "findSignerById/" + id_signer;
+        String url_signataire = urlAccessBdd + "findSignataireById/" + id_signer;
+        String url2 = urlAccessBdd + "ajoutOperation";
+        String url3 = urlAccessBdd + "isExistedWorker/" + idWorker;
+        String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        try {
+            Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
+            Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
+            boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
+            if (idWorker == null) {
+                logger.error("Erreur lors de la signature : ID Application introuvable !");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("ID Application introuvable !");
+            }
+            int workerId = idWorker != null ? idWorker.intValue() : 0;
+            if (signataireV2 == null && signataire == null) {
+                logger.error("Erreur lors de la signature : Utilisateur inconnu !");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Utilisateur inconnu !");
+            }
+
+            if (signataireV2 != null) {
+                //System.out.println("TESTV2");
+
+                if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                    compteurErreur++;
+                } else {
+                    compteurErreur = 3;
+                    userkey = signataireV2.getSignerKey();
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                    logger.info("Clé de signature du signataire: " + userkey);
+                    //System.out.println("Code pin lors de la signature: "+signataireV2.getCodePin());
+                    datePart1 = signataireV2.getDateExpiration().split(" ")[0];
+                    LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
+                    LocalDate dateAujourdhui = LocalDate.parse(sdf.format(new Date()), DateTimeFormatter.ISO_LOCAL_DATE);
+                    if (datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration)) {
+                        logger.info("Certificate Expired!");
+                        //System.out.println("DATEEEE EQUAL :"+sdf.format(new Date()));
+                        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body("Certificate Expired!");
+
+                    }
+
+                    nomSignataire = signataireV2.getNomSignataire();
+                }
+            }
+
+            if (signataire != null) {
+                //System.out.println("TESTV1");
+
+                if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
+                    compteurErreur++;
+                } else {
+                    compteurErreur = 3;
+                    userkey = signataire.getSignerKey();
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
+                    logger.info("Clé de signature du signataire: " + userkey);
+                    datePart1 = signataire.getDate_expiration().split(" ")[0];
+                    LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
+                    LocalDate dateAujourdhui = LocalDate.parse(sdf.format(new Date()), DateTimeFormatter.ISO_LOCAL_DATE);
+                    if (datePart1.equals(sdf.format(new Date())) || dateAujourdhui.isAfter(dateExpiration)) {
+                        logger.info("Certificate Expired!");
+                        //System.out.println("DATEEEE EQUAL :"+sdf.format(new Date()));
+                        return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED).body("Certificate Expired!");
+                    }
+                    nomSignataire = signataire.getNomSignataire();
+                }
+            }
+            // System.out.println("DATEEEE EQUAL :"+compteurErreur);
+            if (compteurErreur <= 2) {
+                logger.error("Erreur lors de la signature : Mauvais Code PIN !");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez fournir un bon code PIN !");
+            }
+
+            if (file.isEmpty()) {
+                logger.error("Erreur lors de la signature : Fichier introuvable !");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez selectionner un fichier !");
+            }
+            if (!verifWoker) {
+                logger.error("Erreur lors de la signature : ID Application introuvable !");
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body("ID Application introuvable !");
+            }
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+            //headers.add("X-Keyfactor-Requested-With","");
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("filereceivefile", new ByteArrayResource(file.getBytes()) {
+                @Override
+                public String getFilename() {
+                    return file.getOriginalFilename();
+                }
+            });
+            body.add("workerId", workerId);
+            //////////////////////////////////////////////////////
+            final String serviceURL = prop.getProperty("wsdlUrl_client");
+            String keyStoreLocation = prop.getProperty("keystore");
+            String trustStoreLocation = prop.getProperty("trustore1");
+
+            String password = prop.getProperty("password_keystore");
+
+            System.setProperty("javax.net.ssl.keyStore", keyStoreLocation);
+            System.setProperty("javax.net.ssl.password", password);
+            System.setProperty("javax.net.ssl.trustStore", trustStoreLocation);
+            System.setProperty("javax.net.ssl.trustStorePassword", password);
+
+
+            //QName serviceName = new QName("http://www.confiancefactory.com/", "SignServerUser_Cert");
+            URL wsdlURL = null;
+            try {
+                wsdlURL = new URL(serviceURL);
+            } catch (MalformedURLException e) {
+                // TODO Auto-generated catch block
+                e.printStackTrace();
+            }
+            ClientWSService service = new ClientWSService(wsdlURL);
+            ClientWS port = service.getClientWSPort();
+            // System.out.println("#####PORT "+userkey);
+            try {
+                setupTLS(port, password, userkey.substring(8));
+                //  System.out.println("#####PORT "+userkey.substring(8));
+            } catch (IOException | GeneralSecurityException e1) {
+                // TODO Auto-generated catch block
+                //log.error(e1.getMessage());
+                e1.printStackTrace();
+            }
+
+            try {
+
+                byte[] fileBytes = file.getBytes();
+                byte[] signedDocumentBytes = null;
+                List<byte[]> bytesFile = new ArrayList<>();
+                bytesFile.add(fileBytes);
+                /////////////////////////////////TEST GENERATION QR CODE /////////////////////////////////////////////
+                // Génération du QR code et ajout au document PDF
+                Rectangle freeZone = null;
+                try (PDDocument document = PDDocument.load(new ByteArrayInputStream(fileBytes))) {
+                    int numberOfPages = document.getNumberOfPages();
+                    // Récupérer l'index de la dernière page
+                    PDPage lastPage = document.getPage(numberOfPages - 1);
+                    System.out.println(numberOfPages);
+                    PDPage page = document.getPage(numberOfPages - 1); // Ajouter le QR code à la première page
+                    if (posX == null && posY == null) {
+                        // Trouver une zone libre
+                        freeZone = QRCodeGenerator.findFreeAreaOnPage(lastPage, 100, 100);
+                        if (freeZone == null) {
+                            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Aucune zone libre trouvée pour placer le QR code.");
+                        }
+                    }
+                    // Ajouter le QR code
+                    try (PDPageContentStream contentStream = new PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
+                        byte[] qrCodeImage = QRCodeGenerator.generateQRCodeImage("https://abc.sn", 100, 100);
+                        PDImageXObject pdImage = PDImageXObject.createFromByteArray(document, qrCodeImage, "qrCode");
+                        if (posX != null && posY != null) {
+                            // Utiliser les coordonnées spécifiées
+                            contentStream.drawImage(pdImage, posX, posY, 100, 100);
+                        } else {
+                            // Utiliser la zone libre trouvée
+                            assert freeZone != null;
+                            contentStream.drawImage(pdImage, freeZone.x, freeZone.y, 100, 100);
+                        }
+                        if (freeZone != null) {
+                            // Déterminez la position où vous voulez placer le QR code
+                            contentStream.drawImage(pdImage, 1, 100, 100, 100);// Ajustez la position et la taille si nécessaire
+                        }
+
+                    }
+
+                    // Sauvegarder le document dans un ByteArrayOutputStream
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    document.save(baos);
+                    document.close();
+
+                    // Récupérer les bytes du document modifié
+                    signedDocumentBytes = baos.toByteArray();
+
+                    // Retourner le document signé avec le QR code en tant que réponse
+                    //return ResponseEntity.ok().contentType(MediaType.APPLICATION_PDF).body(signedDocumentBytes);
+
+                } catch (Exception e) {
+                    String errorMessage = "Erreur lors de l'ajout du QR code : " + e.getMessage();
+                    logger.error(errorMessage, e);
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorMessage);
+                }
+                // System.out.println("clee de sign :"+signataireV2.getSignerKey());
+                rsp = port.processData(String.valueOf(workerId), null, signedDocumentBytes);
+                OperationSignature operationSignature = new OperationSignature();
+                HttpHeaders headers2 = new HttpHeaders();
+                headers2.setContentType(MediaType.APPLICATION_JSON);
+                operationSignature.setIdSigner(id_signer);
+                operationSignature.setCodePin(signataireV2.getCodePin());
+                operationSignature.setSignerKey(signataireV2.getSignerKey());
+                Worker worker = restTemplate.getForObject(urlNomWorker, Worker.class);
+
+                Date dateOp = new Date();
+
+                operationSignature.setDateOperation(sdf.format(dateOp));
+                assert worker != null;
+                operationSignature.setNomWorker(worker.getNomWorker());
+
+                // Créer une requête HTTP avec l'objet OperationSignature dans le corps
+                HttpEntity<OperationSignature> requestEntity = new HttpEntity<>(operationSignature, headers2);
+                // Envoyer la requête HTTP POST
+                ResponseEntity<OperationSignature> responseEntity = restTemplate.postForEntity(url2, requestEntity, OperationSignature.class);
+
+
+            } catch (
+                    InternalServerException_Exception | RequestFailedException_Exception e) {
+                String errorMessage = "Erreur lors de la signature : " + e.getMessage();
+                logger.error(errorMessage, e);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorMessage);
+            }
+            //logger.info("Document signé avec succès");
+
+            return ResponseEntity.ok(rsp.getData());
+        } catch (Exception e) {
+            String errorMessage = "Une erreur est survenue lors de la signature : " + e.getMessage();
+            logger.error(errorMessage, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorMessage);
+        }
+
     }
 
 }
