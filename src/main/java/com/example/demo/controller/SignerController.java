@@ -59,7 +59,7 @@ import java.util.List;
  * @created 19/03/2024/03/2024 - 14:48
  */
 @RestController
-@RequestMapping("/signer/v1.1/")
+@RequestMapping("/signer/v0.0.2/")
 @Api(description = "API de signature")
 public class SignerController {
     private static final String ALGORITHM = "AES";
@@ -363,6 +363,7 @@ public class SignerController {
     public ResponseEntity<String> appelerEnroll(@RequestBody SignataireRequest_V2 signataireRequest) {
         String urlAccess = prop.getProperty("url_access");
         RestTemplate restTemplate = new RestTemplate();
+
         String url = urlAccess + "findSignerByCni/" + signataireRequest.getCni();
         String urlNomSigner = urlAccess + "findSignerBynomSigner/" + signataireRequest.getNomSignataire() + signataireRequest.getIdApplication();
         String urlIdApp = urlAccess + "findSignerByIdApp/" + signataireRequest.getIdApplication();
@@ -429,7 +430,7 @@ public class SignerController {
                         signataire_v2.setIdApplication(signatairesList_Noms.get(0).getIdApplication());
                         Worker worker = restTemplate.getForObject(urlNomWorker, Worker.class);
                         assert worker != null;
-                        System.out.println("xxxxyyyzzzz" + worker.getNomWorker());
+                       // System.out.println("xxxxyyyzzzz" + worker.getNomWorker());
                         signataire_v2.setNomWorker(worker.getNomWorker());
 
                         // Créer une requête HTTP avec l'objet OperationSignature dans le corps
@@ -793,6 +794,8 @@ public class SignerController {
         String userkey = "";
         RestTemplate restTemplate = new RestTemplate();
         String urlAccessBdd = prop.getProperty("url_access");
+        String urlQrCode =prop.getProperty("url_qrCode") + "enregistrerQrCode";
+        String urlLastQrCode =prop.getProperty("url_qrCode") + "getLastQrCode";
         String url_signer = urlAccessBdd + "findSignerById/" + id_signer;
         String url_signataire = urlAccessBdd + "findSignataireById/" + id_signer;
         String url2 = urlAccessBdd + "ajoutOperation";
@@ -927,6 +930,17 @@ public class SignerController {
                 List<byte[]> bytesFile = new ArrayList<>();
                 bytesFile.add(fileBytes);
                 /////////////////////////////////TEST GENERATION QR CODE /////////////////////////////////////////////
+                //Informations pour enregistrer le QrCode
+                QrCode lastQrCode = restTemplate.getForObject(urlLastQrCode, QrCode.class);
+                QrCode qrCode = new QrCode();
+                qrCode.setNomSignataire(nomSignataire);
+                assert signataireV2 != null;
+                qrCode.setCni(signataireV2.getCni());
+                qrCode.setTelephone(signataireV2.getTelephone());
+                qrCode.setSignerKey(signataireV2.getSignerKey());
+                qrCode.setNomDocument(file.getOriginalFilename());
+                qrCode.setDateSignature(sdf.format(new Date()));
+
                 // Génération du QR code et ajout au document PDF
                 Rectangle freeZone = null;
                 try (PDDocument document = PDDocument.load(new ByteArrayInputStream(fileBytes))) {
@@ -944,7 +958,8 @@ public class SignerController {
                     }
                     // Ajouter le QR code
                     try (PDPageContentStream contentStream = new PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
-                        byte[] qrCodeImage = QRCodeGenerator.generateQRCodeImage("https://abc.sn", 100, 100);
+                        assert lastQrCode != null;
+                        byte[] qrCodeImage = QRCodeGenerator.generateQRCodeImage(prop.getProperty("url_infos_qrCode")+(lastQrCode.getId()+1), 100, 100);
                         PDImageXObject pdImage = PDImageXObject.createFromByteArray(document, qrCodeImage, "qrCode");
                         if (posX != null && posY != null) {
                             // Utiliser les coordonnées spécifiées
@@ -986,6 +1001,7 @@ public class SignerController {
                 operationSignature.setCodePin(signataireV2.getCodePin());
                 operationSignature.setSignerKey(signataireV2.getSignerKey());
                 Worker worker = restTemplate.getForObject(urlNomWorker, Worker.class);
+                qrCode.setWorkerName(worker.getNomWorker());
 
                 Date dateOp = new Date();
 
@@ -995,6 +1011,9 @@ public class SignerController {
 
                 // Créer une requête HTTP avec l'objet OperationSignature dans le corps
                 HttpEntity<OperationSignature> requestEntity = new HttpEntity<>(operationSignature, headers2);
+                //Creer la requete avec l'objet QrCode
+                HttpEntity<QrCode> requestEntityQrCode = new HttpEntity<>(qrCode, headers2);
+                ResponseEntity<QrCode> responseEntityQrCode = restTemplate.postForEntity(urlQrCode, requestEntityQrCode, QrCode.class);
                 // Envoyer la requête HTTP POST
                 ResponseEntity<OperationSignature> responseEntity = restTemplate.postForEntity(url2, requestEntity, OperationSignature.class);
 
