@@ -24,6 +24,9 @@ public class OperationSignature {
     @Column(name = "id_signer")
     private Integer idSigner;
 
+    @Column(name = "id_co_signer")
+    private Integer idCoSigner;
+
     @Column(name = "code_pin")
     private String codePin;
 

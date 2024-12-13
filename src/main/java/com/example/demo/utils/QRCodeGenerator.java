@@ -6,10 +6,12 @@ import com.google.zxing.client.j2se.MatrixToImageWriter;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
 import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.text.PDFTextStripperByArea;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -39,6 +41,37 @@ public class QRCodeGenerator {
             for (int y = 0; y <= pageHeight - height; y += stepY) {
                 Rectangle rect = new Rectangle(x, y, width, height);
                 stripper.addRegion("test", rect);
+                stripper.extractRegions(page);
+                String text = stripper.getTextForRegion("test").trim();
+
+                // Vérifier si la zone est libre de texte
+                if (text.isEmpty()) {
+                    return rect; // Retourner la première zone libre trouvée
+                }
+            }
+        }
+        return null; // Pas de zone libre trouvée
+    }
+
+    public static PDRectangle findFreeArea(PDPage page, int width, int height) throws IOException {
+        PDFTextStripperByArea stripper = new PDFTextStripperByArea();
+        int pageWidth = (int) page.getMediaBox().getWidth();
+        int pageHeight = (int) page.getMediaBox().getHeight();
+
+        // Diviser la page en une grille de zones à vérifier
+        int stepX = 50; // Largeur d'une zone
+        int stepY = 50; // Hauteur d'une zone
+
+        for (int x = 0; x <= pageWidth - width; x += stepX) {
+            for (int y = 0; y <= pageHeight - height; y += stepY) {
+                // Créer un PDRectangle pour représenter la zone
+                PDRectangle rect = new PDRectangle(x, y, width, height);
+
+                // Convertir le PDRectangle en Rectangle2D
+                Rectangle2D rect2D = new Rectangle2D.Float(rect.getLowerLeftX(), rect.getLowerLeftY(), rect.getWidth(), rect.getHeight());
+
+                // Ajouter la région en utilisant Rectangle2D
+                stripper.addRegion("test", rect2D);
                 stripper.extractRegions(page);
                 String text = stripper.getTextForRegion("test").trim();
 
