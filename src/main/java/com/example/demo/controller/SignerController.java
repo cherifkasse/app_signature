@@ -2,6 +2,7 @@ package com.example.demo.controller;
 
 import com.example.demo.model.*;
 import com.example.demo.utils.QRCodeGenerator;
+import com.example.demo.utils.Utils;
 import com.example.demo.wsdl_client.*;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.annotations.*;
@@ -9,13 +10,16 @@ import org.apache.cxf.configuration.jsse.TLSClientParameters;
 import org.apache.cxf.configuration.security.AuthorizationPolicy;
 import org.apache.cxf.frontend.ClientProxy;
 import org.apache.cxf.transport.http.HTTPConduit;
-import org.apache.cxf.transport.http.Headers;
 import org.apache.cxf.transport.http.auth.HttpAuthHeader;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.PDPageContentStream;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject;
+import org.bouncycastle.asn1.ASN1InputStream;
+import org.bouncycastle.asn1.x509.SubjectPublicKeyInfo;
+import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder;
+import org.bouncycastle.util.encoders.Hex;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
@@ -24,10 +28,7 @@ import org.springframework.http.*;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.client.HttpClientErrorException;
-import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.HttpStatusCodeException;
-import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.*;
 import org.springframework.web.multipart.MultipartFile;
 import springfox.documentation.annotations.ApiIgnore;
 
@@ -49,12 +50,16 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.*;
+import java.security.cert.CertificateEncodingException;
+import java.security.cert.CertificateFactory;
+import java.security.cert.X509Certificate;
 import java.text.SimpleDateFormat;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.*;
+import javax.servlet.http.HttpServletRequest;
 
 /**
  * @author Cherif KASSE
@@ -73,6 +78,9 @@ public class SignerController {
     private static final Logger logger = LoggerFactory.getLogger(SignerController.class);
     Properties prop = null;
     DataResponse rsp = null;
+
+    String texteRetourControlAccess = "Vous n'êtes pas autorisé à accéder à cette ressource.\n" +
+            "Merci de bien vouloir vous limiter aux ressources que vous avez demandées.";
 
     public SignerController() {
         try (InputStream input = SignerController.class.getClassLoader().getResourceAsStream("configWin.properties")) {
@@ -191,7 +199,7 @@ public class SignerController {
             @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId") Integer idWorker,
             @ApiParam(value = "Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file,
             @ApiParam(value = "Code pour activer les informations du signataire sur le serveur de signature.") @RequestParam("codePin") String codePin,
-            @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer) throws IOException {
+            @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer,HttpServletRequest request) throws IOException {
         logger.info("################Debut de traitement de la signature#########################");
 
         int compteurErreur = 0;
@@ -200,6 +208,7 @@ public class SignerController {
         String userkey = "";
         RestTemplate restTemplate = new RestTemplate();
         String urlAccessBdd = prop.getProperty("url_access");
+        String urlControlCert = urlAccessBdd + "checkUid";
         String url_signer = urlAccessBdd + "findSignerById/" + id_signer;
         String url_signataire = urlAccessBdd + "findSignataireById/" + id_signer;
         String url2 = urlAccessBdd + "ajoutOperation";
@@ -207,6 +216,29 @@ public class SignerController {
         String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
+//            X509Certificate[] certs = (X509Certificate[])request.getAttribute("javax.servlet.request.X509Certificate");
+//
+//            X509Certificate certif_client= certs[0];
+//
+//            SubjectPublicKeyInfo publicKeyInfo=getSubjectPublicKeyInfo(certif_client);
+//            byte[] sbytes = publicKeyInfo.getPublicKeyData().getBytes();
+//            String Uniq_ID=getSHA256FingerprintAsString(sbytes);
+//            System.out.println("Certificat trouvés :"+Uniq_ID);
+//            logger.info("Certificat trouvés :"+Uniq_ID);
+//            if(!Uniq_ID.isEmpty()) {
+//                return ResponseEntity.status(HttpStatus.OK).body("Certificats trouvés: "+Uniq_ID);
+//            }
+            RestTemplate restTemplateS = new RestTemplate();
+            String uid = calculateUidCert(request);
+            String nomTable = "sign_document";
+            logger.info("UUID CERT :"+uid);
+            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+            if(!exists) {
+                logger.error(texteRetourControlAccess);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            }
+
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
@@ -293,6 +325,20 @@ public class SignerController {
                     return file.getOriginalFilename();
                 }
             });
+            /// Appel fonction creation PDF : Entrée
+            String fileName = "";
+            if (Objects.equals(prop.getProperty("tracer"), "1")) {
+                if (signataireV2 != null) {
+                    fileName = id_signer + "_" + signataireV2.getSignerKey();
+                    Utils.createPdf(file.getBytes(), id_signer, signataireV2.getSignerKey(), fileName, prop);
+                }
+                if (signataire != null) {
+                    fileName = id_signer + "_" + signataire.getSignerKey();
+                    Utils.createPdf(file.getBytes(), id_signer, signataire.getSignerKey(), fileName, prop);
+                }
+
+            }
+
             body.add("workerId", workerId);
             //////////////////////////////////////////////////////
             final String serviceURL = prop.getProperty("wsdlUrl_client");
@@ -320,7 +366,7 @@ public class SignerController {
             // System.out.println("#####PORT "+userkey);
             try {
                 setupTLS(port, password, userkey.substring(8));
-                 System.out.println("#####PORT "+userkey.substring(8));
+               System.out.println("#####PORT " + userkey.substring(8));
             } catch (IOException | GeneralSecurityException e1) {
                 // TODO Auto-generated catch block
                 //log.error(e1.getMessage());
@@ -339,7 +385,7 @@ public class SignerController {
             if (signataireV2 != null) {
                 operationSignature.setCodePin(signataireV2.getCodePin());
                 operationSignature.setSignerKey(signataireV2.getSignerKey());
-            }else {
+            } else {
                 operationSignature.setCodePin(signataire.getCode_pin());
                 operationSignature.setSignerKey(signataire.getSignerKey());
             }
@@ -359,7 +405,19 @@ public class SignerController {
 
 
             //logger.info("Document signé avec succès");
-            System.out.println("RESPONSE : "+ Arrays.toString(rsp.getData()));
+            /// Appel fonction creation PDF : Sortie
+            if (Objects.equals(prop.getProperty("tracer"), "1")) {
+                if (signataireV2 != null) {
+                    fileName = "sign_" + id_signer + "_" + signataireV2.getSignerKey();
+                    Utils.createPdf(rsp.getData(), id_signer, signataireV2.getSignerKey(), fileName, prop);
+                }
+                if (signataire != null) {
+                    fileName = "sign_" + id_signer + "_" + signataire.getSignerKey();
+                    Utils.createPdf(rsp.getData(), id_signer, signataire.getSignerKey(), fileName, prop);
+                }
+
+            }
+           //ystem.out.println("RESPONSE : " + Arrays.toString(rsp.getData()));
             return ResponseEntity.ok(rsp.getData());
         } catch (Exception e) {
             String errorMessage = "Une erreur est survenue lors de la signature : " + e.getMessage();
@@ -372,7 +430,7 @@ public class SignerController {
 
     //@ApiIgnore
 
-    //////////////////////////////////////////////////////////////
+    /// ///////////////////////////////////////////////////////////
 
     @PostMapping("enroll")
     @ApiOperation(value = "Ce chapitre décrit toutes les opérations exposées par le service de gestion des opérations d’enrôlement d’un signataire. Elle permet à une application d’envoyer les informations nécessaires à l’enrôlement d’un signataire sur le serveur de signature.")
@@ -384,14 +442,23 @@ public class SignerController {
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
     @ResponseStatus(HttpStatus.OK)
-    public ResponseEntity<String> appelerEnroll(@RequestBody SignataireRequest_V2 signataireRequest) {
+    public ResponseEntity<String> appelerEnroll(@RequestBody SignataireRequest_V2 signataireRequest, HttpServletRequest request) {
         String urlAccess = prop.getProperty("url_access");
         RestTemplate restTemplate = new RestTemplate();
+        logger.info("Requête reçue : {}", signataireRequest.toString());
+
+        // Exemple d'affichage explicite des espaces pour des champs individuels
+        logger.info("Détail des champs : nomSignataire='{}', cni='{}', telephone='{}', idApplication='{}'",
+                signataireRequest.getNomSignataire(),
+                signataireRequest.getCni(),
+                signataireRequest.getTelephone(),
+                signataireRequest.getIdApplication());
 
         String url = urlAccess + "findSignerByCni/" + signataireRequest.getCni();
         String urlNomSigner = urlAccess + "findSignerBynomSigner/" + signataireRequest.getNomSignataire() + signataireRequest.getIdApplication();
         String urlIdApp = urlAccess + "findSignerByIdApp/" + signataireRequest.getIdApplication();
         String apiUrl = urlAccess + "enroll";
+        String urlControlCert = urlAccess + "checkUid";
         String renewUrl = urlAccess + "renew";
         String urlInfosCertif = urlAccess + "enregistrerInfosCertif";
         String urlNomWorker = urlAccess + "findNomWorkerById/" + signataireRequest.getIdApplication();
@@ -399,9 +466,13 @@ public class SignerController {
         Worker workerName = restTemplate.getForObject(urlNomWorker, Worker.class);
         Date date_creation = new Date();
         SimpleDateFormat sdf2 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        String cle_de_signature2 = prop.getProperty("aliasCle") + decouper_nom(signataireRequest.getNomSignataire().trim().toUpperCase()) + signataireRequest.getIdApplication().toString()+ "_" + signataireRequest.getCni();
+        String messageRetourDecouper = decouper_nom(signataireRequest.getNomSignataire().trim().toUpperCase()) + signataireRequest.getIdApplication().toString();
+        if (messageRetourDecouper.equals("Tableau vide!")) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur: Informations absentes.");
+        }
+        String cle_de_signature2 = prop.getProperty("aliasCle") + messageRetourDecouper + "_" + signataireRequest.getCni();
 
-        if (cle_de_signature2.length() > 50){
+        if (cle_de_signature2.length() > 50) {
             cle_de_signature2 = cle_de_signature2.substring(0, 50);
         }
         String signerKey = cle_de_signature2;
@@ -410,6 +481,16 @@ public class SignerController {
         headers.setContentType(MediaType.APPLICATION_JSON);
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
+            RestTemplate restTemplateS = new RestTemplate();
+            String uid = calculateUidCert(request);
+            String nomTable = "sign_document";
+            logger.info("UUID CERT :"+uid);
+            String urlControl = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+            Boolean exists = restTemplateS.getForObject(urlControl, Boolean.class);
+            if(!exists) {
+                logger.error(texteRetourControlAccess);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            }
             ResponseEntity<Signataire_V2[]> signataireV2 = restTemplate.getForEntity(url, Signataire_V2[].class);
             ResponseEntity<Signataire_V2[]> signataireV2_nom = restTemplate.getForEntity(urlNomSigner, Signataire_V2[].class);
             boolean verifWoker = false;
@@ -419,7 +500,7 @@ public class SignerController {
                 logger.info(retourMessage);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(retourMessage);
             }
-            if(signataireRequest.getCni().length() < 5){
+            if (signataireRequest.getCni().length() < 5) {
                 String retourMessage = "La taille du CNI ne peut pas être inférieur à 5.";
                 logger.info(retourMessage);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(retourMessage);
@@ -521,7 +602,9 @@ public class SignerController {
             }
 
             HttpEntity<SignataireRequest_V2> requestEntity = new HttpEntity<>(signataireRequest, headers);
-
+            if (Objects.equals(signataireRequest.getNomSignataire(), " ")) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Vérifiez vos informations.");
+            }
             ResponseEntity<String> response = restTemplate.postForEntity(apiUrl, requestEntity, String.class);
             logger.info("Requete réussie: " + response.getBody());
             InfosCertificat infosCertificat2 = new InfosCertificat();
@@ -695,7 +778,7 @@ public class SignerController {
 
     }
 
-    ///////////////////////////DEPOT JSUTIFICATIF
+    /// ////////////////////////DEPOT JSUTIFICATIF
     @PostMapping("depot/{idSignataire}")
     @ApiOperation(value = "Cette section permet à l’application métier qui a effectué un enrôlement de téléverser une copie d'un document d'identité pour un signataire existant dans le système. En téléversant une pièce d'identité, les opérateurs du centre d’enregistrement peuvent vérifier et authentifier l'identité du signataire. Cette fonctionnalité améliore les mesures de sécurité et garantit le respect des protocoles de vérification d'identité.")
     @ApiResponses(value = {
@@ -741,7 +824,7 @@ public class SignerController {
     }
 
 
-    //////////////////comrise entre deux dates/////////////////////////////////////////////
+    /// ///////////////comrise entre deux dates/////////////////////////////////////////////
     public boolean isDateCompriseEntre(String dateEntre, String dateDebut, String dateFin) {
         final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd");
         LocalDate entre = LocalDate.parse(dateEntre, DATE_FORMATTER);
@@ -751,7 +834,7 @@ public class SignerController {
         return (entre.isEqual(debut) || entre.isAfter(debut)) && (entre.isEqual(fin) || entre.isBefore(fin));
     }
 
-    ////////////////////////////// Liste Cert_Sign////////////////////////////////////////////
+    /// /////////////////////////// Liste Cert_Sign////////////////////////////////////////////
     private List<Map<String, Object>> mapToMap(List<Object[]> rawList, String operation) {
         List<Map<String, Object>> mapList = new ArrayList<>();
         String date = null;
@@ -854,7 +937,8 @@ public class SignerController {
                     urlGetOperations,
                     HttpMethod.GET,
                     null,
-                    new ParameterizedTypeReference<List<OperationSignature>>() {}
+                    new ParameterizedTypeReference<List<OperationSignature>>() {
+                    }
             );
 
             List<OperationSignature> listeOp = responseEntity.getBody();
@@ -880,7 +964,7 @@ public class SignerController {
         return false;
     }
 
-    ///////////////////////////TEST SIGNATURE AVEC CODE QR/////////////////////////////////////////////////
+    /// ////////////////////////TEST SIGNATURE AVEC CODE QR/////////////////////////////////////////////////
     @PostMapping("sign_document_qr_code/{id_signer}")
     @ApiOperation(value = "Cette opération permet à l'utilisateur de signer un document et d'apposer un Code QR qur le document. Le document pdf à signer est envoyé sous format de tableau de bytes (binaire).")
     @ApiResponses(value = {
@@ -900,12 +984,12 @@ public class SignerController {
             @ApiImplicitParam(name = "Y", value = "Optionnel\nPartie Y des coordonnées (x,y) pour la position de départ du code QR.", dataType = "int", paramType = "query", example = "100"),
     })
     public ResponseEntity<?> Signature_base_qr_code(
-            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId",required = false) Integer idWorker,
+            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId", required = false) Integer idWorker,
             @ApiParam(value = "Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file,
             @ApiParam(value = "Code pour activer les informations du signataire sur le serveur de signature.") @RequestParam("codePin") String codePin,
             @ApiParam(value = "Partie X des coordonnées (x,y) pour la position de départ du code QR.") @RequestParam(value = "X", defaultValue = "0") Float posX,
             @ApiParam(value = "Partie Y des coordonnées (x,y) pour la position de départ du code QR.") @RequestParam(value = "Y", defaultValue = "0") Float posY,
-            @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer) throws IOException {
+            @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer, HttpServletRequest request) throws IOException {
         logger.info("################Debut de traitement de la signature#########################");
         if (idWorker == null) {
             logger.error("Erreur lors de la signature : ID Application introuvable !");
@@ -917,6 +1001,7 @@ public class SignerController {
         String userkey = "";
         RestTemplate restTemplate = new RestTemplate();
         String urlAccessBdd = prop.getProperty("url_access");
+        String urlControlCert = urlAccessBdd + "checkUid";
         String urlQrCode = prop.getProperty("url_qrCode") + "enregistrerQrCode";
         String urlLastQrCode = prop.getProperty("url_qrCode") + "getLastQrCode";
         String url_signer = urlAccessBdd + "findSignerById/" + id_signer;
@@ -924,9 +1009,20 @@ public class SignerController {
         String url2 = urlAccessBdd + "ajoutOperation";
         String url3 = urlAccessBdd + "isExistedWorker/" + idWorker;
         String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
-        SimpleDateFormat  sdf = new SimpleDateFormat("yyyy-MM-dd");
-        DateTimeFormatter  sdf2 = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
+        DateTimeFormatter sdf2 = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         try {
+
+            RestTemplate restTemplateS = new RestTemplate();
+            String uid = calculateUidCert(request);
+            String nomTable = "sign_document_qr_code";
+            logger.info("UUID CERT :"+uid);
+            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+            if(!exists) {
+                logger.error(texteRetourControlAccess);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            }
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
@@ -1087,10 +1183,10 @@ public class SignerController {
                     // Ajouter le QR code
                     try (PDPageContentStream contentStream = new PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true)) {
                         int idLastQrCode = 0;
-                        if(lastQrCode != null){
+                        if (lastQrCode != null) {
                             idLastQrCode = Math.toIntExact(lastQrCode.getId());
                         }
-                        byte[] qrCodeImage = QRCodeGenerator.generateQRCodeImage(prop.getProperty("url_infos_qrCode") + ( idLastQrCode + 1), 100, 100);
+                        byte[] qrCodeImage = QRCodeGenerator.generateQRCodeImage(prop.getProperty("url_infos_qrCode") + (idLastQrCode + 1), 100, 100);
                         PDImageXObject pdImage = PDImageXObject.createFromByteArray(document, qrCodeImage, "qrCode");
                         if (posX != null && posY != null) {
                             // Utiliser les coordonnées spécifiées
@@ -1132,7 +1228,7 @@ public class SignerController {
                 if (signataireV2 != null) {
                     operationSignature.setCodePin(signataireV2.getCodePin());
                     operationSignature.setSignerKey(signataireV2.getSignerKey());
-                }else {
+                } else {
                     operationSignature.setCodePin(signataire.getCode_pin());
                     operationSignature.setSignerKey(signataire.getSignerKey());
                 }
@@ -1174,7 +1270,7 @@ public class SignerController {
     }
 
 
-    ///////////////////////////SIGNATURE IMAGE A LA PLACE CODE QR/////////////////////////////////////////////////
+    /// ////////////////////////SIGNATURE IMAGE A LA PLACE CODE QR/////////////////////////////////////////////////
     @PostMapping("sign_document_image/{id_signer}")
     @ApiOperation(value = "Cette opération permet à l'utilisateur de signer un document et insérer une image sur le document. Le document pdf à signer est envoyé sous format de tableau de bytes (binaire).")
     @ApiResponses(value = {
@@ -1200,7 +1296,7 @@ public class SignerController {
             @ApiParam(value = "Optionnel\nCoordonnée X pour la position du code QR.") @RequestParam(value = "X", defaultValue = "0") Float posX,
             @ApiParam(value = "Optionnel\nCoordonnée Y pour la position du code QR.") @RequestParam(value = "Y", defaultValue = "0") Float posY,
             @ApiParam(value = "Image à insérer à la place du QR code.") @RequestParam("image") MultipartFile image,
-            @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer) throws IOException {
+            @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer,HttpServletRequest request) throws IOException {
         logger.info("################Debut de traitement de la signature#########################");
 
         int compteurErreur = 0;
@@ -1209,6 +1305,7 @@ public class SignerController {
         String userkey = "";
         RestTemplate restTemplate = new RestTemplate();
         String urlAccessBdd = prop.getProperty("url_access");
+        String urlControlCert = urlAccessBdd + "checkUid";
         String urlQrCode = prop.getProperty("url_qrCode") + "enregistrerQrCode";
         String urlLastQrCode = prop.getProperty("url_qrCode") + "getLastQrCode";
         String url_signer = urlAccessBdd + "findSignerById/" + id_signer;
@@ -1219,6 +1316,16 @@ public class SignerController {
         String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
+            RestTemplate restTemplateS = new RestTemplate();
+            String uid = calculateUidCert(request);
+            String nomTable = "sign_document_image";
+            logger.info("UUID CERT :"+uid);
+            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+            if(!exists) {
+                logger.error(texteRetourControlAccess);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            }
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
@@ -1460,7 +1567,6 @@ public class SignerController {
     }
 
 
-
     @PostMapping("sign_document_by_workerID")
     @ApiOperation(value = "Cette opération permet à l'utilisateur de signer un document. Le document pdf à signer est envoyé sous format de tableau de bytes (binaire).")
     @ApiResponses(value = {
@@ -1477,10 +1583,10 @@ public class SignerController {
 //
 //    })
     public ResponseEntity<?> Signature_base_workerID(
-            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId",required = false) Integer idWorker,
-            @ApiParam(value = "Code Pin pour la startup fourni par GAINDE 2000.") @RequestParam(value = "codePin",required = false) String codePin,
-            @ApiParam(value = "Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file
-           ) throws IOException {
+            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId", required = false) Integer idWorker,
+            @ApiParam(value = "Code Pin pour la startup fourni par GAINDE 2000.") @RequestParam(value = "codePin", required = false) String codePin,
+            @ApiParam(value = "Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file, HttpServletRequest request
+    ) throws IOException {
         logger.info("################Debut de traitement de la signature#########################");
 
         if (idWorker == null) {
@@ -1499,27 +1605,36 @@ public class SignerController {
         RestTemplate restTemplate = new RestTemplate();
         String urlAccessBdd = prop.getProperty("url_access_startup");
         String url2 = urlAccessBdd + "ajoutOperation";
+        String urlControlCert = urlAccessBdd + "checkUid";
         String url3 = urlAccessBdd + "isExistedWorker/" + idWorker;
         String url_startup = urlAccessBdd + "findSignerStartup/" + idWorker;
         String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
-
+            RestTemplate restTemplateS = new RestTemplate();
+            String uid = calculateUidCert(request);
+            String nomTable = "sign_document_by_workerID";
+            logger.info("UUID CERT :"+uid);
+            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+            if(!exists) {
+                logger.error(texteRetourControlAccess);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            }
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
             int workerId = idWorker != null ? idWorker.intValue() : 0;
 
-            if(!verifWoker){
+            if (!verifWoker) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("ID application introuvable !");
             }
 
-            SignerStartup signerStartup = restTemplate.getForObject(url_startup,SignerStartup.class);
+            SignerStartup signerStartup = restTemplate.getForObject(url_startup, SignerStartup.class);
 
             assert signerStartup != null;
 //            System.out.println("Signer Startup :"+signerStartup.getCodePin());
-            if(!signerStartup.getCodePin().equals(encrypterPin(codePin))){
+            if (!signerStartup.getCodePin().equals(encrypterPin(codePin))) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Mauvais code pin !");
             }
-
 
 
             if (file.isEmpty()) {
@@ -1588,7 +1703,7 @@ public class SignerController {
                 operationSignature.setCodePin("123456");
                 operationSignature.setSignerKey("userkey_default_value");
                 Worker worker = restTemplate.getForObject(urlNomWorker, Worker.class);
-                System.out.println("WORKERRRRR "+worker.getNomWorker());
+                System.out.println("WORKERRRRR " + worker.getNomWorker());
 
                 Date dateOp = new Date();
 
@@ -1633,25 +1748,16 @@ public class SignerController {
             @ApiResponse(code = 400, message = "La requête est mal formée ou incomplète"),
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
-//    @ApiImplicitParams({
-//            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int", paramType = "query", example = "123"),
-//            @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file", paramType = "formData",example = "exemple.pdf"),
-//            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String", paramType = "query", example = "1234"),
-//            @ApiImplicitParam(name = "image", value = "L'image à insérer dans le document. Seuls les formats PNG et JPEG sont autorisés", dataType = "file", paramType = "formData",example = "image.png"),
-//            @ApiImplicitParam(name = "id_signer", value = "Numéro unique d'enrôlement du signataire.", dataType = "int", paramType = "path", example = "456"),
-//            @ApiImplicitParam(name = "X", value = "Optionnel\nCoordonnée X pour la position du code QR. ", dataType = "int", paramType = "query", example = "100"),
-//            @ApiImplicitParam(name = "Y", value = "Optionnel\nCoordonnée Y pour la position du code QR.", dataType = "int", paramType = "query", example = "100"),
-//            @ApiImplicitParam(name = "numeroPage", value = "Optionel\nLe numéro de la page sur laquelle mettre l'image.\nSi ce n'est pas renseigné l'image est apposée à la dernière page", dataType = "String", paramType = "query", example = "1234"),
-//    })
-    public ResponseEntity<?> sign_document_image_link_signature(
-            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId",required = false) Integer idWorker,
+
+   public ResponseEntity<?> sign_document_image_link_signature(
+            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId", required = false) Integer idWorker,
             @ApiParam(value = "Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file,
             @ApiParam(value = "Code pour activer les informations du signataire sur le serveur de signature.") @RequestParam("codePin") String codePin,
-            @ApiParam(value = "Image à insérer à la place du QR code.") @RequestParam(value="image") MultipartFile image,
+            @ApiParam(value = "Image à insérer à la place du QR code.") @RequestParam(value = "image") MultipartFile image,
             @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer,
             @ApiParam(value = "Optionnel\nCoordonnée X pour la position du code QR.") @RequestParam(value = "X", defaultValue = "0") Float posX,
             @ApiParam(value = "Optionnel\nCoordonnée Y pour la position du code QR.") @RequestParam(value = "Y", defaultValue = "0") Float posY,
-            @ApiParam(value = "Numéro de page sur laquelle apposer l'image.") @RequestParam(value = "numeroPage", defaultValue = "Last") String numeroPage) throws IOException {
+            @ApiParam(value = "Numéro de page sur laquelle apposer l'image.") @RequestParam(value = "numeroPage", defaultValue = "Last") String numeroPage, HttpServletRequest request) throws IOException {
         logger.info("################Debut de traitement de la signature#########################");
 
 
@@ -1671,7 +1777,8 @@ public class SignerController {
             RestTemplate restTemplate = new RestTemplate();
             String base64Image = Base64.getEncoder().encodeToString(image.getBytes());
             String urlAccessBdd = prop.getProperty("url_access");
-            String urlSetWorkerAttr = prop.getProperty("url_access") + "setWorkerAttributes/" + idWorker ;
+            String urlControlCert = urlAccessBdd + "checkUid";
+            String urlSetWorkerAttr = prop.getProperty("url_access") + "setWorkerAttributes/" + idWorker;
             String url_signer = urlAccessBdd + "findSignerById/" + id_signer;
             String url_signataire = urlAccessBdd + "findSignataireById/" + id_signer;
             String url2 = urlAccessBdd + "ajoutOperation";
@@ -1682,6 +1789,17 @@ public class SignerController {
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
+
+            RestTemplate restTemplateS = new RestTemplate();
+            String uid = calculateUidCert(request);
+            String nomTable = "sign_document_image_link_signature";
+            logger.info("UUID CERT :"+uid);
+            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+            if(!exists) {
+                logger.error(texteRetourControlAccess);
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            }
 
             int workerId = idWorker != null ? idWorker.intValue() : 0;
             if (signataireV2 == null && signataire == null) {
@@ -1835,17 +1953,17 @@ public class SignerController {
 
                     BufferedImage image_file = ImageIO.read(image.getInputStream());
 
-                    // Récupérer la largeur et la hauteur de l'image
+// Récupérer la largeur et la hauteur de l'image
                     int width = image_file.getWidth();
                     int height = image_file.getHeight();
 
-                    // Vérification si les coordonnées sont fournies
+// Vérification si les coordonnées sont fournies
                     String x1, y1, x2, y2;
                     if (posX != 0 && posY != 0) {
                         // Utilisation des coordonnées fournies
                         x1 = String.valueOf(posX.intValue());
                         y1 = String.valueOf(posY.intValue());
-                        x2 = String.valueOf(( width));
+                        x2 = String.valueOf((width));
                         y2 = String.valueOf((height));
                     } else {
                         // Recherche d'une zone libre sur la page
@@ -1862,7 +1980,17 @@ public class SignerController {
                         y2 = String.valueOf((int) freeZone.getUpperRightY());
                     }
 
-                    // Appel à l'API pour définir les coordonnées
+// Charger l'image en tant qu'objet PDImageXObject
+                    PDImageXObject pdImage = PDImageXObject.createFromByteArray(document, image.getBytes(), "image");
+
+// Ajouter l'image à la page du document
+                   // PDPageContentStream contentStream = new PDPageContentStream(document, page);
+                    PDPageContentStream contentStream = new PDPageContentStream(document, page, PDPageContentStream.AppendMode.APPEND, true, true);
+
+                    contentStream.drawImage(pdImage, Float.parseFloat(x1), Float.parseFloat(y1), Float.parseFloat(x2) - Float.parseFloat(x1), Float.parseFloat(y2) - Float.parseFloat(y1));
+                    contentStream.close();
+
+// Appel à l'API pour définir les coordonnées
                     String urlSetWorkerAttrCoord = prop.getProperty("url_access") + "setWorkerAttributesCoord/" + idWorker + "/" + x1 + "/" + y1 + "/" + x2 + "/" + y2;
                     HttpHeaders headersCoord = new HttpHeaders();
                     headersCoord.setContentType(MediaType.APPLICATION_JSON);
@@ -1875,11 +2003,11 @@ public class SignerController {
                             Void.class
                     );
 
-
-                    // Sauvegarde du document signé
+// Sauvegarde du document signé
                     ByteArrayOutputStream baos = new ByteArrayOutputStream();
                     document.save(baos);
                     signedDocumentBytes = baos.toByteArray();
+
 
                     // Sauvegarde du document signé via l'API
                     HttpHeaders headersImage = new HttpHeaders();
@@ -1894,17 +2022,14 @@ public class SignerController {
                     HttpEntity<MultiValueMap<String, Object>> requestImage = new HttpEntity<>(bodyImage, headersImage);
 
 
-
-
-
                 }
                 // Pas de corps pour cette requête POST, uniquement des en-têtes si nécessaire
                 HttpHeaders headersWorker = new HttpHeaders();
 // Ajoutez des en-têtes si nécessaire
                 headersWorker.setContentType(MediaType.MULTIPART_FORM_DATA);
                 MultiValueMap<String, Object> bodyWorker = new LinkedMultiValueMap<>();
-                bodyWorker.add("image",base64Image);
-                HttpEntity<MultiValueMap<String, Object>> requestEntityWorker = new HttpEntity<>(bodyWorker,headersWorker);
+                bodyWorker.add("image", base64Image);
+                HttpEntity<MultiValueMap<String, Object>> requestEntityWorker = new HttpEntity<>(bodyWorker, headersWorker);
 
                 restTemplate.exchange(
                         urlSetWorkerAttr,
@@ -1913,7 +2038,7 @@ public class SignerController {
                         Void.class
                 );
 
-                if(numeroPage != null ){
+                if (numeroPage != null) {
                     String position = numeroPage.toString();
                     String urlSetWorkerAttrPage = prop.getProperty("url_access") + "setWorkerAttributesPage/" + idWorker + "/" + numeroPage;
                     HttpHeaders headers3 = new HttpHeaders();
@@ -1925,9 +2050,9 @@ public class SignerController {
                             requestEntity,
                             Void.class
                     );
-                }else{
+                } else {
                     String position = "Last";
-                    String urlSetWorkerAttrPage = prop.getProperty("url_access") + "setWorkerAttributesPage/" + idWorker + "/" + position ;
+                    String urlSetWorkerAttrPage = prop.getProperty("url_access") + "setWorkerAttributesPage/" + idWorker + "/" + position;
                     HttpHeaders headers3 = new HttpHeaders();
                     headers3.setContentType(MediaType.APPLICATION_JSON);
                     HttpEntity<Void> requestEntity = new HttpEntity<>(headers3);
@@ -2000,9 +2125,10 @@ public class SignerController {
         }
 
     }
+
     DataResponse rsp2 = null;
 
-    //////////////////////////////////DOUBLE SIGNATURE////////////////////////////////////
+    /// ///////////////////////////////DOUBLE SIGNATURE////////////////////////////////////
     @PostMapping("co_signature/{id_signer}")
     @ApiOperation(value = "Cette opération permet la co-signature d'un document par deux intervenants. Le document pdf à signer est envoyé sous format de tableau de bytes (binaire).")
     @ApiResponses(value = {
@@ -2021,10 +2147,10 @@ public class SignerController {
             @ApiImplicitParam(name = "orgId", value = "L'id du deuxième intervenant.", dataType = "int", paramType = "query", example = "45")
     })
     public ResponseEntity<?> double_ignature_base2(
-            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId",required = false) Integer idWorker,
+            @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId", required = false) Integer idWorker,
             @ApiParam(value = "Le document PDF à signer sous format tableau de bytes.") @RequestParam("filereceivefile") MultipartFile file,
             @ApiParam(value = "Code pour activer les informations du signataire sur le serveur de signature.") @RequestParam("codePin") String codePin,
-            @RequestParam(value = "orgId",required = false) Integer orgId,
+            @RequestParam(value = "orgId", required = false) Integer orgId,
             @ApiParam(value = "Numéro unique d'enrôlement du signataire.") @PathVariable Integer id_signer) throws IOException {
         logger.info("################Debut de traitement de la signature#########################");
         if (orgId == null) {
@@ -2189,7 +2315,7 @@ public class SignerController {
                     //log.error(e1.getMessage());
                     e1.printStackTrace();
                 }
-                rsp2 =  port.processData(String.valueOf(workerId), null, rsp.getData());
+                rsp2 = port.processData(String.valueOf(workerId), null, rsp.getData());
                 OperationSignature operationSignature = new OperationSignature();
                 HttpHeaders headers2 = new HttpHeaders();
                 headers2.setContentType(MediaType.APPLICATION_JSON);
@@ -2281,9 +2407,42 @@ public class SignerController {
         }
     }
 
+    @GetMapping("getInfosEnrolement")
+    public ResponseEntity<?> getInfosEnrolement() {
+        String url = prop.getProperty("url_access") + "getInfosEnrolement";
+
+        if (url == null || url.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("URL d'accès non définie dans les propriétés.");
+        }
+
+        RestTemplate restTemplate = new RestTemplate();
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        try {
+            // Appel de l'API distante avec un tableau comme type attendu
+            ResponseEntity<InfosCertificat[]> responseEntityQrCode =
+                    restTemplate.getForEntity(url, InfosCertificat[].class);
+
+            InfosCertificat[] body = responseEntityQrCode.getBody();
+
+            return ResponseEntity.status(responseEntityQrCode.getStatusCode())
+                    .body(body);
+
+        } catch (RestClientException e) {
+            return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                    .body("Erreur lors de l'appel à l'API distante : " + e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Une erreur inattendue s'est produite : " + e.getMessage());
+        }
+    }
+
+
     @PostMapping("creerSignerStartup")
     public ResponseEntity<String> creerSignerStartupProxy(@RequestBody SignerStartup signerStartup) {
-        String url = prop.getProperty("url_access")+"creerSignerStartup";
+        String url = prop.getProperty("url_access") + "creerSignerStartup";
         RestTemplate restTemplate = new RestTemplate();
 
         try {
@@ -2310,7 +2469,7 @@ public class SignerController {
 
         } catch (Exception e) {
             logger.error("Erreur lors de l'appel du service creerSignerStartup", e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erreur lors de l'appel du service: "+e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erreur lors de l'appel du service: " + e);
         }
     }
 
@@ -2359,7 +2518,7 @@ public class SignerController {
 
     @GetMapping("qrcode")
     public String showQrCodePage() {
-        return  "redirect:/qrcode.html"; // Il redirigera vers la page qrcode.html
+        return "redirect:/qrcode.html"; // Il redirigera vers la page qrcode.html
     }
 
     public String calculerDateExpirationJours(String dateString) {
@@ -2373,18 +2532,144 @@ public class SignerController {
         return resultDate.format(formatter);
     }
 
-    public String decouper_nom(String nomAChanger){
-        if(nomAChanger.contains(" ")){
+    public String decouper_nom(String nomAChanger) {
+        //System.out.println("1er caractere : "+nomAChanger.charAt(0));
+        if (nomAChanger.contains(" ")) {
             String[] caract = nomAChanger.split(" ");
-            nomAChanger = caract[0]+ "_";
-            for(int i = 1; i < caract.length ; i++){
-                nomAChanger += caract[i].charAt(0) ;
+            logger.info("Caracteres du tableau :"+caract.toString());
+            if (caract.length < 1) {
+                return "Tableau vide!";
+            }
+            if (caract[0].trim().isEmpty()) {
+                return "Tableau vide!";
+            }
+            nomAChanger = caract[0] + "_";
+            logger.info("caract de 0 :"+caract[0]);
+            logger.info("Taille du tableau :"+caract.length);
+            if (caract.length > 1) {
+                for (int i = 1; i < caract.length; i++) {
+                    logger.info("Dans la boucle FOR");
+                    if (!caract[i].trim().isEmpty()) {
+                        logger.info("caract de "+i+" :"+caract[i]);
+                        nomAChanger += caract[i].charAt(0);
+                    }
+                }
+            }
+
+        }
+        if (nomAChanger.length() > 70) {
+            nomAChanger = nomAChanger.substring(0, 70);
+        }
+        logger.info("Nom caractere :"+nomAChanger);
+        return nomAChanger;
+    }
+
+
+    @PostMapping("verifications_infos/{id_signer}/{codePin}/{idWorker}")
+    public ResponseEntity<?> verificationInformations(@PathVariable Integer id_signer, @PathVariable String codePin, @PathVariable Integer idWorker) {
+        int compteurErreur2 = 0;
+        RestTemplate restTemplate = new RestTemplate();
+        String urlAccessBdd = prop.getProperty("url_access");
+        String url_signer = urlAccessBdd + "findSignerById/" + id_signer;
+        String url_signataire = urlAccessBdd + "findSignataireById/" + id_signer;
+        String url3 = urlAccessBdd + "isExistedWorker/" + idWorker;
+        Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
+        Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
+        boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
+
+        if (signataireV2 == null && signataire == null) {
+            logger.error("Erreur lors de la signature : Utilisateur inconnu !");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Utilisateur inconnu !");
+        }
+        if (signataireV2 != null) {
+            System.out.println("TESTV2");
+
+            if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
+                System.out.println("TESTCodePin");
+                logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                compteurErreur2++;
             }
         }
-        if (nomAChanger.length() > 70){
-            nomAChanger = nomAChanger.substring(0,70);
+        if (signataire != null) {
+            System.out.println("TESTV1");
+
+            if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
+                compteurErreur2++;
+            }
         }
 
-        return nomAChanger;
+        if (compteurErreur2 != 0) {
+            System.out.println("compteur " + compteurErreur2);
+            logger.error("Erreur lors de la signature : Mauvais Code PIN !");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez fournir un bon code PIN !");
+        }
+
+        if (!verifWoker) {
+            logger.error("Erreur lors de la signature : ID Application introuvable !");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body("ID Application introuvable !");
+        }
+        return ResponseEntity.status(HttpStatus.OK).body("Les informations saisies sont correctes!");
+    }
+
+    public static SubjectPublicKeyInfo getSubjectPublicKeyInfo(X509Certificate certificate) throws CertificateEncodingException, IOException, javax.security.cert.CertificateEncodingException {
+        // Obtenir l'encodage DER du certificat
+        byte[] encodedCertificate = certificate.getEncoded();
+
+        // Créer un flux d'entrée à partir de l'encodage
+        ByteArrayInputStream bis = new ByteArrayInputStream(encodedCertificate);
+
+        // Créer un flux d'entrée ASN.1
+        ASN1InputStream dis = new ASN1InputStream(bis);
+
+        // Lire la séquence ASN.1 du certificat
+        org.bouncycastle.asn1.x509.Certificate cert = org.bouncycastle.asn1.x509.Certificate.getInstance(dis.readObject());
+
+        // Obtenir SubjectPublicKeyInfo
+        return cert.getSubjectPublicKeyInfo();
+    }
+
+    public static String getSHA256FingerprintAsString(byte[] in) {
+        byte[] res = generateSHA256Fingerprint(in);
+        return new String(Hex.encode(res));
+    }
+    public static byte[] generateSHA256Fingerprint(byte[] ba) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            return md.digest(ba);
+        } catch (NoSuchAlgorithmException nsae) {
+            //log.error("SHA-256 algorithm not supported", nsae);
+        }
+        return null;
+    } // generateSHA256Fingerprint
+
+
+    public static String concatenateAsciiCodes(String input) {
+        StringBuilder result = new StringBuilder();
+        for (char c : input.toCharArray()) {
+            result.append((int) c); // Convertir en code ASCII et concaténer
+        }
+        return result.toString();
+    }
+
+
+    public String calculateUidCert(HttpServletRequest request) throws Exception {
+        X509Certificate[] certs = (X509Certificate[])request.getAttribute("javax.servlet.request.X509Certificate");
+
+        X509Certificate certif_client= certs[0];
+
+
+        SubjectPublicKeyInfo publicKeyInfo = new JcaX509CertificateHolder(certif_client).getSubjectPublicKeyInfo();
+        byte[] keyBytes = publicKeyInfo.getPublicKeyData().getBytes();
+
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] hash = digest.digest(keyBytes);
+
+        StringBuilder sb = new StringBuilder();
+        for (byte b : hash) {
+            sb.append(String.format("%02x", b));
+        }
+
+        return sb.toString();
     }
 }
