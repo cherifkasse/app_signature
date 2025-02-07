@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Détails de la signature</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            text-align: center;
+        }
+        .details {
+            margin-top: 20px;
+        }
+        .details div {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Détails de la signature</h1>
+    <div class="details" id="signature-details">
+        <!-- Les informations de la signature seront affichées ici -->
+        <p>Chargement des informations...</p>
+    </div>
+</div>
+
+<script>
+    // Fonction pour récupérer les données depuis l'API
+    async function getSignatureDetails() {
+        try {
+            // Faire un appel à l'API
+            const response = await fetch('http://localhost:8282/signer/getQrCode/10');
+
+            // Vérifier si la requête a réussi
+            if (response.ok) {
+                const data = await response.json();
+
+                // Afficher les données sur la page
+                const detailsDiv = document.getElementById('signature-details');
+                detailsDiv.innerHTML = `
+                        <div><strong>ID :</strong> ${data.id}</div>
+                        <div><strong>Nom du signataire :</strong> ${data.nomSignataire}</div>
+                        <div><strong>CNI :</strong> ${data.cni}</div>
+                        <div><strong>Téléphone :</strong> ${data.telephone}</div>
+                        <div><strong>Clé de signature :</strong> ${data.signerKey}</div>
+                        <div><strong>Nom du document :</strong> ${data.nomDocument}</div>
+                        <div><strong>Date de signature :</strong> ${data.dateSignature}</div>
+                        <div><strong>Nom du travailleur :</strong> ${data.workerName}</div>
+                    `;
+            } else {
+                console.error("Erreur lors de la récupération des informations.");
+            }
+        } catch (error) {
+            console.error('Erreur de requête :', error);
+        }
+    }
+
+    // Appel de la fonction dès que la page est chargée
+    window.onload = getSignatureDetails;
+</script>
+
+</body>
+</html>

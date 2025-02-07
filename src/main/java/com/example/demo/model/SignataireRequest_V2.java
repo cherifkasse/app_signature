@@ -54,4 +54,14 @@ public class SignataireRequest_V2 {
 
     }
 
+    @Override
+    public String toString() {
+        return "SignataireRequest_V2{" +
+                "nomSignataire='" + nomSignataire + '\'' +
+                ", cni='" + cni + '\'' +
+                ", telephone='" + telephone + '\'' +
+                ", idApplication=" + idApplication +
+                '}';
+    }
+
 }
