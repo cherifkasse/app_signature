@@ -2535,7 +2535,7 @@ public class SignerController {
     public String decouper_nom(String nomAChanger) {
         //System.out.println("1er caractere : "+nomAChanger.charAt(0));
         if (nomAChanger.contains(" ")) {
-            String[] caract = nomAChanger.split(" ");
+            String[] caract = nomAChanger.split("\\s+");
             logger.info("Caracteres du tableau :"+caract.toString());
             if (caract.length < 1) {
                 return "Tableau vide!";
