@@ -50,6 +50,9 @@ public class Signataire {
 
     private String signerKey;
 
+    @NotBlank(message = "Veuillez renseigner le cni ou le passport!")
+    private String cniPassport;
+
 
 
     public Signataire(){}
@@ -93,6 +96,14 @@ public class Signataire {
    /* public void setApplication_rattachee(String application_rattachee) {
         this.application_rattachee = application_rattachee;
     }*/
+
+    public String getCniPassport() {
+        return cniPassport;
+    }
+
+    public void setCniPassport(String cniPassport) {
+        this.cniPassport = cniPassport;
+    }
 
     public String getNom_application() {
         return nom_application;

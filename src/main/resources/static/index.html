@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Récupération du Code</title>
+</head>
+
+<body>
+
+    <script>
+        // Fonction pour récupérer le code de l'URL
+        function getCodeFromUrl() {
+            // Récupérer les paramètres de l'URL actuelle
+            const urlParams = new URLSearchParams(window.location.search);
+            console.log('url params:', urlParams);
+			
+            // Récupérer le code d'autorisation
+            const code = urlParams.get('code');
+
+            console.log('Code d\'autorisation récupéré:', code);
+            console.log('Paramètres de l\'URL:', window.location.search);
+			
+            // Afficher le code sur la page
+            if (code) {
+                //document.getElementById('code').innerText = ""+code; // Afficher le code dans le span
+
+                // Envoyer le code à l'API Spring pour l'enregistrer
+                saveCodeToServer(code);
+            } else {
+                console.error('Aucun code trouvé dans l\'URL.');
+                alert('Aucun code trouvé dans l\'URL.');
+            }
+        }
+
+        // Fonction pour envoyer le code à l'API Spring
+        function saveCodeToServer(code) {
+            fetch('http://localhost:8282/signer/save-code', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(code)
+            })
+            .then(response => {
+                if (response.ok) {
+                    return response.text();
+                }
+                throw new Error('Erreur lors de l\'enregistrement du code.');
+            })
+            .then(data => console.log('Réponse du serveur:', data))
+            .catch(error => console.error(error));
+        }
+
+        // Appeler la fonction
+        getCodeFromUrl();
+    </script>
+
+    <p>Code: <span id='code'>0</span></p> <!-- Utiliser un span pour afficher le code -->
+</body>
+
+</html>
+
