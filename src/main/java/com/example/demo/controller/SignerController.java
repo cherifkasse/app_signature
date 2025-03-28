@@ -230,15 +230,15 @@ public class SignerController {
 //                return ResponseEntity.status(HttpStatus.OK).body("Certificats trouvés: "+Uniq_ID);
 //            }
             RestTemplate restTemplateS = new RestTemplate();
-            String uid = calculateUidCert(request);
-            String nomTable = "sign_document";
-            logger.info("UUID CERT :"+uid);
-            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
-            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
-            if(!exists) {
-                logger.error(texteRetourControlAccess);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
-            }
+//            String uid = calculateUidCert(request);
+//            String nomTable = "sign_document";
+//            logger.info("UUID CERT :"+uid);
+//            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+//            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+//            if(!exists) {
+//                logger.error(texteRetourControlAccess);
+//                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+//            }
 
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
@@ -448,7 +448,7 @@ public class SignerController {
         RestTemplate restTemplate = new RestTemplate();
         logger.info("Requête reçue : {}", signataireRequest.toString());
 
-        // Exemple d'affichage explicite des espaces pour des champs individuels
+        // Affichage explicite des espaces pour des champs individuels
         logger.info("Détail des champs : nomSignataire='{}', cni='{}', telephone='{}', idApplication='{}'",
                 signataireRequest.getNomSignataire(),
                 signataireRequest.getCni(),
