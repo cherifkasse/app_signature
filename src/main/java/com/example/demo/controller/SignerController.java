@@ -4,6 +4,7 @@ import com.example.demo.model.*;
 import com.example.demo.utils.QRCodeGenerator;
 import com.example.demo.utils.Utils;
 import com.example.demo.wsdl_client.*;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.annotations.*;
 import org.apache.cxf.configuration.jsse.TLSClientParameters;
@@ -229,15 +230,18 @@ public class SignerController {
 //                return ResponseEntity.status(HttpStatus.OK).body("Certificats trouvés: "+Uniq_ID);
 //            }
             RestTemplate restTemplateS = new RestTemplate();
-            String uid = calculateUidCert(request);
-            String nomTable = "sign_document";
-            logger.info("UUID CERT :"+uid);
-            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
-            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
-            if(!exists) {
-                logger.error(texteRetourControlAccess);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                String uid = calculateUidCert(request);
+                String nomTable = "sign_document";
+                logger.info("UUID CERT :"+uid);
+                String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+                Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+                if(!exists) {
+                    logger.error(texteRetourControlAccess);
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+                }
             }
+
 
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
@@ -442,12 +446,12 @@ public class SignerController {
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
     @ResponseStatus(HttpStatus.OK)
-    public ResponseEntity<String> appelerEnroll(@RequestBody SignataireRequest_V2 signataireRequest, HttpServletRequest request) {
+    public ResponseEntity<?> appelerEnroll(@RequestBody SignataireRequest_V2 signataireRequest, HttpServletRequest request) {
         String urlAccess = prop.getProperty("url_access");
         RestTemplate restTemplate = new RestTemplate();
         logger.info("Requête reçue : {}", signataireRequest.toString());
 
-        // Exemple d'affichage explicite des espaces pour des champs individuels
+        // Affichage explicite des espaces pour des champs individuels
         logger.info("Détail des champs : nomSignataire='{}', cni='{}', telephone='{}', idApplication='{}'",
                 signataireRequest.getNomSignataire(),
                 signataireRequest.getCni(),
@@ -475,6 +479,7 @@ public class SignerController {
         if (cle_de_signature2.length() > 50) {
             cle_de_signature2 = cle_de_signature2.substring(0, 50);
         }
+        InfosCertificat infosCertificat = new InfosCertificat();
         String signerKey = cle_de_signature2;
 
         HttpHeaders headers = new HttpHeaders();
@@ -482,15 +487,17 @@ public class SignerController {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
             RestTemplate restTemplateS = new RestTemplate();
-            String uid = calculateUidCert(request);
-            String nomTable = "sign_document";
-            logger.info("UUID CERT :"+uid);
-            String urlControl = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
-            Boolean exists = restTemplateS.getForObject(urlControl, Boolean.class);
-            if(!exists) {
-                logger.error(texteRetourControlAccess);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
-            }
+           if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+               String uid = calculateUidCert(request);
+               String nomTable = "enroll";
+               logger.info("UUID CERT :"+uid);
+               String urlControl = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+               Boolean exists = restTemplateS.getForObject(urlControl, Boolean.class);
+               if(!exists) {
+                   logger.error(texteRetourControlAccess);
+                   return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+               }
+           }
             ResponseEntity<Signataire_V2[]> signataireV2 = restTemplate.getForEntity(url, Signataire_V2[].class);
             ResponseEntity<Signataire_V2[]> signataireV2_nom = restTemplate.getForEntity(urlNomSigner, Signataire_V2[].class);
             boolean verifWoker = false;
@@ -521,6 +528,7 @@ public class SignerController {
             List<Signataire_V2> signatairesList = Arrays.asList(signatairesArray);
             List<Signataire_V2> signatairesList_Noms = Arrays.asList(signatairesArray_noms);
             String datePart1 = "";
+            String certifUser ="";
 
             if (!signatairesList.isEmpty()) {
 //
@@ -554,14 +562,13 @@ public class SignerController {
                         assert worker != null;
                         // System.out.println("xxxxyyyzzzz" + worker.getNomWorker());
                         signataire_v2.setNomWorker(worker.getNomWorker());
-                        InfosCertificat infosCertificat = new InfosCertificat();
-
 
                         // Créer une requête HTTP avec l'objet OperationSignature dans le corps
                         HttpEntity<Signataire_V2> requestEntity = new HttpEntity<>(signataire_v2, headers2);
                         // Envoyer la requête HTTP POST
                         ResponseEntity<String> responseEntity = restTemplate.postForEntity(renewUrl, requestEntity, String.class);
                         EnrollResponse_V2 enrollResponse = objectMapper.readValue(responseEntity.getBody(), EnrollResponse_V2.class);
+                        certifUser = enrollResponse.getCertificate();
                         ResponseEntity<Signataire_V2[]> signataireV3 = restTemplate.getForEntity(url, Signataire_V2[].class);
                         Signataire_V2[] signatairesArrayV3 = signataireV3.getBody();
                         List<Signataire_V2> signatairesListV3 = Arrays.asList(signatairesArrayV3);
@@ -574,7 +581,15 @@ public class SignerController {
                         infosCertificat.setSignerKey(signerKey);
                         infosCertificat.setNomWorker(workerName.getNomWorker());
                         infosCertificat.setDateCreation(sdf2.format(date_creation));
-                        infosCertificat.setDateExpiration(calculerDateExpirationJours(sdf2.format(date_creation)));
+                        String siExpiration7Jours = prop.getProperty("expiration_certificat");
+                        if (siExpiration7Jours ==  "1"){
+                            infosCertificat.setDateExpiration(calculerDateExpirationJours(sdf2.format(date_creation)));
+                        }
+                        else{
+                            X509Certificate certif = convertStringToX509(enrollResponse.getCertificate());
+                            // System.out.println("Total expiration :"+certif.getNotAfter());
+                            infosCertificat.setDateExpiration(sdf2.format(certif.getNotAfter()));
+                        }
                         HttpEntity<InfosCertificat> requestEntityInfos = new HttpEntity<>(infosCertificat, headers2);
                         ResponseEntity<String> responseEntityInfos = restTemplate.postForEntity(urlInfosCertif, requestEntityInfos, String.class);
                         ///Infos certificats
@@ -614,7 +629,18 @@ public class SignerController {
             infosCertificat2.setSignerKey(signerKey);
             infosCertificat2.setNomWorker(workerName.getNomWorker());
             infosCertificat2.setDateCreation(sdf2.format(date_creation));
-            infosCertificat2.setDateExpiration(calculerDateExpirationJours(sdf2.format(date_creation)));
+            ObjectMapper objectMapper = new ObjectMapper();
+            EnrollResponse_V2 enrollResponse = objectMapper.readValue(response.getBody(), EnrollResponse_V2.class);
+            String siExpiration7Jours = prop.getProperty("expiration_certificat");
+            if (siExpiration7Jours ==  "1"){
+                infosCertificat2.setDateExpiration(calculerDateExpirationJours(sdf2.format(date_creation)));
+            }
+            else{
+                X509Certificate certif = convertStringToX509(enrollResponse.getCertificate());
+               // System.out.println("Total expiration :"+certif.getNotAfter());
+                infosCertificat2.setDateExpiration(sdf2.format(certif.getNotAfter()));
+            }
+
             HttpEntity<InfosCertificat> requestEntityInfos2 = new HttpEntity<>(infosCertificat2, headers2);
             ResponseEntity<String> responseEntityInfos2 = restTemplate.postForEntity(urlInfosCertif, requestEntityInfos2, String.class);
 
@@ -622,14 +648,20 @@ public class SignerController {
             return response;
 
         } catch (HttpStatusCodeException e) {
-            String errorMessage = "Une erreur est survenue: " + e.getResponseBodyAsString();
+            if (e.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                String errorMessage = e.getResponseBodyAsString();
+                logger.error(errorMessage, e);
+                return ResponseEntity.badRequest().body(errorMessage);
+            }
+            String errorMessage =  e.getResponseBodyAsString();
             logger.error(errorMessage, e);
             return ResponseEntity.status(e.getStatusCode()).body(errorMessage);
         } catch (Exception e) {
-            String generalErrorMessage = "Une erreur inattendue est apparue: " + e.getMessage();
+            String generalErrorMessage = e.getMessage();
             logger.error(generalErrorMessage, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(generalErrorMessage);
         }
+
     }
 
     @PostMapping("decrypt/{pinEncrypted}")
@@ -1012,17 +1044,19 @@ public class SignerController {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         DateTimeFormatter sdf2 = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         try {
-
-            RestTemplate restTemplateS = new RestTemplate();
-            String uid = calculateUidCert(request);
-            String nomTable = "sign_document_qr_code";
-            logger.info("UUID CERT :"+uid);
-            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
-            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
-            if(!exists) {
-                logger.error(texteRetourControlAccess);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                RestTemplate restTemplateS = new RestTemplate();
+                String uid = calculateUidCert(request);
+                String nomTable = "sign_document_qr_code";
+                logger.info("UUID CERT :"+uid);
+                String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+                Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+                if(!exists) {
+                    logger.error(texteRetourControlAccess);
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+                }
             }
+
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
@@ -1316,16 +1350,19 @@ public class SignerController {
         String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
-            RestTemplate restTemplateS = new RestTemplate();
-            String uid = calculateUidCert(request);
-            String nomTable = "sign_document_image";
-            logger.info("UUID CERT :"+uid);
-            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
-            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
-            if(!exists) {
-                logger.error(texteRetourControlAccess);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                RestTemplate restTemplateS = new RestTemplate();
+                String uid = calculateUidCert(request);
+                String nomTable = "sign_document_image";
+                logger.info("UUID CERT :"+uid);
+                String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+                Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+                if(!exists) {
+                    logger.error(texteRetourControlAccess);
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+                }
             }
+
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
@@ -1611,16 +1648,19 @@ public class SignerController {
         String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
-            RestTemplate restTemplateS = new RestTemplate();
-            String uid = calculateUidCert(request);
-            String nomTable = "sign_document_by_workerID";
-            logger.info("UUID CERT :"+uid);
-            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
-            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
-            if(!exists) {
-                logger.error(texteRetourControlAccess);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                RestTemplate restTemplateS = new RestTemplate();
+                String uid = calculateUidCert(request);
+                String nomTable = "sign_document_by_workerID";
+                logger.info("UUID CERT :"+uid);
+                String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+                Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+                if(!exists) {
+                    logger.error(texteRetourControlAccess);
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+                }
             }
+
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
             int workerId = idWorker != null ? idWorker.intValue() : 0;
 
@@ -1789,17 +1829,19 @@ public class SignerController {
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
-
-            RestTemplate restTemplateS = new RestTemplate();
-            String uid = calculateUidCert(request);
-            String nomTable = "sign_document_image_link_signature";
-            logger.info("UUID CERT :"+uid);
-            String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
-            Boolean exists = restTemplateS.getForObject(url, Boolean.class);
-            if(!exists) {
-                logger.error(texteRetourControlAccess);
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                RestTemplate restTemplateS = new RestTemplate();
+                String uid = calculateUidCert(request);
+                String nomTable = "sign_document_image_link_signature";
+                logger.info("UUID CERT :"+uid);
+                String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+                Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+                if(!exists) {
+                    logger.error(texteRetourControlAccess);
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+                }
             }
+
 
             int workerId = idWorker != null ? idWorker.intValue() : 0;
             if (signataireV2 == null && signataire == null) {
@@ -2535,7 +2577,7 @@ public class SignerController {
     public String decouper_nom(String nomAChanger) {
         //System.out.println("1er caractere : "+nomAChanger.charAt(0));
         if (nomAChanger.contains(" ")) {
-            String[] caract = nomAChanger.split(" ");
+            String[] caract = nomAChanger.split("\\s+");
             logger.info("Caracteres du tableau :"+caract.toString());
             if (caract.length < 1) {
                 return "Tableau vide!";
@@ -2671,5 +2713,15 @@ public class SignerController {
         }
 
         return sb.toString();
+    }
+
+    public static X509Certificate convertStringToX509(String pemCert) throws Exception {
+
+        // Décoder la chaîne Base64 en tableau de bytes
+        byte[] certBytes = Base64.getDecoder().decode(pemCert);
+
+        // Convertir en certificat X.509
+        CertificateFactory factory = CertificateFactory.getInstance("X.509");
+        return (X509Certificate) factory.generateCertificate(new ByteArrayInputStream(certBytes));
     }
 }
