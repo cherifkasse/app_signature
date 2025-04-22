@@ -233,6 +233,7 @@ public class SignerController {
 //            }
             long startCheckUid = System.currentTimeMillis();
             RestTemplate restTemplateS = new RestTemplate();
+<<<<<<< HEAD
             if (Objects.equals(prop.getProperty("isControlAccess"), "1")) {
                 String uid = calculateUidCert(request);
                 String nomTable = "sign_document";
@@ -240,10 +241,23 @@ public class SignerController {
                 String url = String.format(urlControlCert + "?tableName=%s&uid=%s", nomTable, uid);
                 Boolean exists = restTemplateS.getForObject(url, Boolean.class);
                 if (!exists) {
+=======
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                String uid = calculateUidCert(request);
+                String nomTable = "sign_document";
+                logger.info("UUID CERT :"+uid);
+                String url = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+                Boolean exists = restTemplateS.getForObject(url, Boolean.class);
+                if(!exists) {
+>>>>>>> 39f7c6a (Push 28-03-2025)
                     logger.error(texteRetourControlAccess);
                     return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
                 }
             }
+<<<<<<< HEAD
+=======
+
+>>>>>>> 39f7c6a (Push 28-03-2025)
 
             logDuration("Vérification certificat authentification", startCheckUid);
 
@@ -524,6 +538,7 @@ public class SignerController {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
             RestTemplate restTemplateS = new RestTemplate();
+<<<<<<< HEAD
             if (Objects.equals(prop.getProperty("isControlAccess"), "1")){
                 String uid = calculateUidCert(request);
                 String nomTable = "enroll";
@@ -536,6 +551,19 @@ public class SignerController {
                 }
             }
 
+=======
+           if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+               String uid = calculateUidCert(request);
+               String nomTable = "enroll";
+               logger.info("UUID CERT :"+uid);
+               String urlControl = String.format(urlControlCert+"?tableName=%s&uid=%s",nomTable, uid);
+               Boolean exists = restTemplateS.getForObject(urlControl, Boolean.class);
+               if(!exists) {
+                   logger.error(texteRetourControlAccess);
+                   return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(texteRetourControlAccess);
+               }
+           }
+>>>>>>> 39f7c6a (Push 28-03-2025)
             ResponseEntity<Signataire_V2[]> signataireV2 = restTemplate.getForEntity(url, Signataire_V2[].class);
             ResponseEntity<Signataire_V2[]> signataireV2_nom = restTemplate.getForEntity(urlNomSigner, Signataire_V2[].class);
             boolean verifWoker = false;
@@ -1082,9 +1110,14 @@ public class SignerController {
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         DateTimeFormatter sdf2 = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
         try {
+<<<<<<< HEAD
 
             RestTemplate restTemplateS = new RestTemplate();
             if (Objects.equals(prop.getProperty("isControlAccess"), "1")){
+=======
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                RestTemplate restTemplateS = new RestTemplate();
+>>>>>>> 39f7c6a (Push 28-03-2025)
                 String uid = calculateUidCert(request);
                 String nomTable = "sign_document_qr_code";
                 logger.info("UUID CERT :"+uid);
@@ -1389,8 +1422,13 @@ public class SignerController {
         String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
+<<<<<<< HEAD
             RestTemplate restTemplateS = new RestTemplate();
             if (Objects.equals(prop.getProperty("isControlAccess"), "1")){
+=======
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                RestTemplate restTemplateS = new RestTemplate();
+>>>>>>> 39f7c6a (Push 28-03-2025)
                 String uid = calculateUidCert(request);
                 String nomTable = "sign_document_image";
                 logger.info("UUID CERT :"+uid);
@@ -1402,7 +1440,10 @@ public class SignerController {
                 }
             }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 39f7c6a (Push 28-03-2025)
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
@@ -1688,8 +1729,13 @@ public class SignerController {
         String urlNomWorker = urlAccessBdd + "findNomWorkerById/" + idWorker;
         SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd");
         try {
+<<<<<<< HEAD
             RestTemplate restTemplateS = new RestTemplate();
             if (Objects.equals(prop.getProperty("isControlAccess"), "1")){
+=======
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                RestTemplate restTemplateS = new RestTemplate();
+>>>>>>> 39f7c6a (Push 28-03-2025)
                 String uid = calculateUidCert(request);
                 String nomTable = "sign_document_by_workerID";
                 logger.info("UUID CERT :"+uid);
@@ -1701,7 +1747,10 @@ public class SignerController {
                 }
             }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> 39f7c6a (Push 28-03-2025)
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
             int workerId = idWorker != null ? idWorker.intValue() : 0;
 
@@ -1870,9 +1919,14 @@ public class SignerController {
             Signataire_V2 signataireV2 = restTemplate.getForObject(url_signer, Signataire_V2.class);
             Signataire signataire = restTemplate.getForObject(url_signataire, Signataire.class);
             boolean verifWoker = Boolean.TRUE.equals(restTemplate.getForObject(url3, Boolean.class));
+<<<<<<< HEAD
 
             RestTemplate restTemplateS = new RestTemplate();
             if (Objects.equals(prop.getProperty("isControlAccess"), "1")){
+=======
+            if(Objects.equals(prop.getProperty("isControlAccess"), "1")){
+                RestTemplate restTemplateS = new RestTemplate();
+>>>>>>> 39f7c6a (Push 28-03-2025)
                 String uid = calculateUidCert(request);
                 String nomTable = "sign_document_image_link_signature";
                 logger.info("UUID CERT :"+uid);
