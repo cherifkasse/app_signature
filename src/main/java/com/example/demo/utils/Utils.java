@@ -34,17 +34,25 @@ public class Utils {
         // Chemin complet du fichier PDF
         File pdfFile = new File(outputDir, fileName2);
 
+        // Écrire les bytes du fichier directement dans un fichier
+        try (FileOutputStream fos = new FileOutputStream(pdfFile)) {
+            fos.write(contentFile);
+        }
+        catch (IOException e) {
+            throw new IOException("Erreur lors de l'écriture du fichier PDF : " + e.getMessage(), e);
+        }
+
         // Création du document PDF
-        Document document = new Document();
-        PdfWriter.getInstance(document, Files.newOutputStream(pdfFile.toPath()));
-        document.open();
+        //Document document = new Document();
+        //PdfWriter.getInstance(document, Files.newOutputStream(pdfFile.toPath()));
+        //document.open();
 
         // Ajouter le contenu (bytes du fichier) dans le PDF
         //document.add(new Paragraph("Contenu du fichier en bytes :"));
-        byte[] fileBytes = contentFile;
-        document.add(new Paragraph(new String(fileBytes)));
+        //byte[] fileBytes = contentFile;
+        //document.add(new Paragraph(new String(fileBytes)));
 
-        document.close();
+        //document.close();
 
         // Retourner le chemin complet du fichier généré
 
