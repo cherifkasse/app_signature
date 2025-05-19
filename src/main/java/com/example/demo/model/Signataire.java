@@ -7,7 +7,6 @@ import javax.validation.constraints.NotBlank;
 
 import javax.persistence.Entity;
 import javax.persistence.GeneratedValue;
-import javax.persistence.UniqueConstraint;
 
 /**
  * @author Cherif KASSE
@@ -32,9 +31,9 @@ public class Signataire {
     private String nomSignataire;
     private String categorie;
    // private String application_rattachee;
-    private String nom_application;
+    private String nomApplication;
     @NotBlank(message = "Le code pin ne doit pas etre vide!")
-    private String code_pin;
+    private String codePin;
     @NotBlank(message = "L'adresse mail ne doit pas etre vide!")
     @Column(unique=true)
     private String email;
@@ -105,12 +104,12 @@ public class Signataire {
         this.cniPassport = cniPassport;
     }
 
-    public String getNom_application() {
-        return nom_application;
+    public String getNomApplication() {
+        return nomApplication;
     }
 
-    public void setNom_application(String nom_application) {
-        this.nom_application = nom_application;
+    public void setNomApplication(String nom_application) {
+        this.nomApplication = nom_application;
     }
 
     public String getDateCreation() {
@@ -137,12 +136,12 @@ public class Signataire {
         this.nomSignataire = prenom_nom;
     }
 
-    public String getCode_pin() {
-        return code_pin;
+    public String getCodePin() {
+        return codePin;
     }
 
-    public void setCode_pin(String code_pin) {
-        this.code_pin = code_pin;
+    public void setCodePin(String code_pin) {
+        this.codePin = code_pin;
     }
 
     public String getEmail() {
