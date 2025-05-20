@@ -39,7 +39,7 @@ public class Signataire_V2 {
     private Integer idApplication;
 
     @Column(name = "code_pin")
-    private String codePin;
+    private String code_pin;
 
     @Column(name = "signer_key")
     private String signerKey;

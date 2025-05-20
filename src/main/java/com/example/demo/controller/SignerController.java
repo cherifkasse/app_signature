@@ -326,37 +326,37 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 logger.error("Erreur lors de la signature : Utilisateur inconnu !");
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Utilisateur inconnu !");
             }
-
-            if(signataire != null && signataireV2 != null) {
-                boolean verifSignatairePin = encrypterPin(codePin).equals(signataire.getCodePin());
-                boolean verifSignataireV2Pin = encrypterPin(codePin).equals(signataireV2.getCodePin());
-                if(verifSignatairePin && !verifSignataireV2Pin) {
-                    signataireV2 = null;
-                }
-                if(!verifSignatairePin && verifSignataireV2Pin) {
-                    signataire = null;
-                }
-                if(!verifSignatairePin && !verifSignataireV2Pin) {
-                   return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez fournir un bon code PIN !");
-                }
-
-            }
+//
+//            if(signataire != null && signataireV2 != null) {
+//                boolean verifSignatairePin = encrypterPin(codePin).equals(signataire.getCode_pin());
+//                boolean verifSignataireV2Pin = encrypterPin(codePin).equals(signataireV2.getCode_pin());
+//                if(verifSignatairePin && !verifSignataireV2Pin) {
+//                    signataireV2 = null;
+//                }
+//                if(!verifSignatairePin && verifSignataireV2Pin) {
+//                    signataire = null;
+//                }
+//                if(!verifSignatairePin && !verifSignataireV2Pin) {
+//                   return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez fournir un bon code PIN !");
+//                }
+//
+//            }
 
             if (signataireV2 != null) {
                 //System.out.println("TESTV2");
 //                logger.info("Signer ID : " + signataireV2.getIdSigner() +
 //                        " Signer Nom Signataire :"+signataireV2.getNomSignataire()+" Signer Cle Signature :"+signataireV2.getSignerKey());
-                if (!Objects.equals(signataireV2.getIdApplication(), idWorker)){
-                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("SignerId not associated with this application Id !");
-                }
+//                if (!Objects.equals(signataireV2.getIdApplication(), idWorker)){
+//                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("SignerId not associated with this application Id !");
+//                }
 
-                if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                if (!encrypterPin(codePin).equals(signataireV2.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataireV2.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     //System.out.println("Code pin lors de la signature: "+signataireV2.getCodePin());
                     datePart1 = signataireV2.getDateExpiration().split(" ")[0];
@@ -380,18 +380,18 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
 //                System.out.println("Nom APP table:"+signataire.getNomApplication());
                 Worker worker = cacheService.getWorker(idWorker).block();
                 assert worker != null;
-                if (!Objects.equals(worker.getNomWorker(), signataire.getNomApplication())) {
-                    logger.info("ID APP Requete:"+worker.getIdWorker());
-                    System.out.println("ID APP Requete:"+worker.getIdWorker());
-                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("SignerId not associated with this application Id !");
-                }
-                if (!encrypterPin(codePin).equals(signataire.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+//                if (!Objects.equals(worker.getNomWorker(), signataire.getNomApplication())) {
+//                    logger.info("ID APP Requete:"+worker.getIdWorker());
+//                    System.out.println("ID APP Requete:"+worker.getIdWorker());
+//                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("SignerId not associated with this application Id !");
+//                }
+                if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataire.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     datePart1 = signataire.getDate_expiration().split(" ")[0];
                     LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
@@ -509,10 +509,10 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             headers2.setContentType(MediaType.APPLICATION_JSON);
             operationSignature.setIdSigner(id_signer);
             if (signataireV2 != null) {
-                operationSignature.setCodePin(signataireV2.getCodePin());
+                operationSignature.setCodePin(signataireV2.getCode_pin());
                 operationSignature.setSignerKey(signataireV2.getSignerKey());
             } else {
-                operationSignature.setCodePin(signataire.getCodePin());
+                operationSignature.setCodePin(signataire.getCode_pin());
                 operationSignature.setSignerKey(signataire.getSignerKey());
             }
 
@@ -738,7 +738,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                         ResponseEntity<Signataire_V2[]> signataireV3 = restTemplate.getForEntity(url, Signataire_V2[].class);
                         Signataire_V2[] signatairesArrayV3 = signataireV3.getBody();
                         List<Signataire_V2> signatairesListV3 = Arrays.asList(signatairesArrayV3);
-                        enrollResponse.setCodePin(decryptPin(signatairesListV3.get(0).getCodePin()));
+                        enrollResponse.setCodePin(decryptPin(signatairesListV3.get(0).getCode_pin()));
                         enrollResponse.setId_signer(signatairesList.get(0).getIdSigner());
                         String responseBodyWithCodePin = objectMapper.writeValueAsString(enrollResponse);
                         ///Infos certificates
@@ -1325,13 +1325,13 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             if (signataireV2 != null) {
                 //System.out.println("TESTV2");
 
-                if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                if (!encrypterPin(codePin).equals(signataireV2.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataireV2.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     //System.out.println("Code pin lors de la signature: "+signataireV2.getCodePin());
                     datePart1 = signataireV2.getDateExpiration().split(" ")[0];
@@ -1351,13 +1351,13 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             if (signataire != null) {
                 //System.out.println("TESTV1");
 
-                if (!encrypterPin(codePin).equals(signataire.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+                if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataire.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     datePart1 = signataire.getDate_expiration().split(" ")[0];
                     LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
@@ -1515,10 +1515,10 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 headers2.setContentType(MediaType.APPLICATION_JSON);
                 operationSignature.setIdSigner(id_signer);
                 if (signataireV2 != null) {
-                    operationSignature.setCodePin(signataireV2.getCodePin());
+                    operationSignature.setCodePin(signataireV2.getCode_pin());
                     operationSignature.setSignerKey(signataireV2.getSignerKey());
                 } else {
-                    operationSignature.setCodePin(signataire.getCodePin());
+                    operationSignature.setCodePin(signataire.getCode_pin());
                     operationSignature.setSignerKey(signataire.getSignerKey());
                 }
 
@@ -1639,13 +1639,13 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             if (signataireV2 != null) {
                 //System.out.println("TESTV2");
 
-                if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                if (!encrypterPin(codePin).equals(signataireV2.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataireV2.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     //System.out.println("Code pin lors de la signature: "+signataireV2.getCodePin());
                     datePart1 = signataireV2.getDateExpiration().split(" ")[0];
@@ -1665,13 +1665,13 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             if (signataire != null) {
                 //System.out.println("TESTV1");
 
-                if (!encrypterPin(codePin).equals(signataire.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+                if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataire.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     datePart1 = signataire.getDate_expiration().split(" ")[0];
                     LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
@@ -1823,10 +1823,10 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 headers2.setContentType(MediaType.APPLICATION_JSON);
                 operationSignature.setIdSigner(id_signer);
                 if (signataireV2 != null) {
-                    operationSignature.setCodePin(signataireV2.getCodePin());
+                    operationSignature.setCodePin(signataireV2.getCode_pin());
                     operationSignature.setSignerKey(signataireV2.getSignerKey());
                 } else {
-                    operationSignature.setCodePin(signataire.getCodePin());
+                    operationSignature.setCodePin(signataire.getCode_pin());
                     operationSignature.setSignerKey(signataire.getSignerKey());
                 }
 
@@ -2122,13 +2122,13 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             if (signataireV2 != null) {
                 //System.out.println("TESTV2");
 
-                if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                if (!encrypterPin(codePin).equals(signataireV2.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataireV2.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     //System.out.println("Code pin lors de la signature: "+signataireV2.getCodePin());
                     datePart1 = signataireV2.getDateExpiration().split(" ")[0];
@@ -2148,13 +2148,13 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             if (signataire != null) {
                 //System.out.println("TESTV1");
 
-                if (!encrypterPin(codePin).equals(signataire.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+                if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataire.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     datePart1 = signataire.getDate_expiration().split(" ")[0];
                     LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
@@ -2403,7 +2403,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 HttpHeaders headers2 = new HttpHeaders();
                 headers2.setContentType(MediaType.APPLICATION_JSON);
                 operationSignature.setIdSigner(id_signer);
-                operationSignature.setCodePin(signataireV2.getCodePin());
+                operationSignature.setCodePin(signataireV2.getCode_pin());
                 operationSignature.setSignerKey(signataireV2.getSignerKey());
                 Worker worker = restTemplate.getForObject(urlNomWorker, Worker.class);
 
@@ -2503,14 +2503,14 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             if (signataireV2 != null && signataireV2_org != null) {
                 //System.out.println("TESTV2");
 
-                if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                if (!encrypterPin(codePin).equals(signataireV2.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataireV2.getSignerKey();
                     userkey_signer = signataireV2_org.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     //System.out.println("Code pin lors de la signature: "+signataireV2.getCodePin());
                     datePart1 = signataireV2.getDateExpiration().split(" ")[0];
@@ -2530,13 +2530,13 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             if (signataire != null) {
                 //System.out.println("TESTV1");
 
-                if (!encrypterPin(codePin).equals(signataire.getCodePin())) {
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+                if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
                     userkey = signataire.getSignerKey();
-                    logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+                    logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                     logger.info("Clé de signature du signataire: " + userkey);
                     datePart1 = signataire.getDate_expiration().split(" ")[0];
                     LocalDate dateExpiration = LocalDate.parse(datePart1, DateTimeFormatter.ISO_LOCAL_DATE);
@@ -2632,7 +2632,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 HttpHeaders headers2 = new HttpHeaders();
                 headers2.setContentType(MediaType.APPLICATION_JSON);
                 operationSignature.setIdSigner(id_signer);
-                operationSignature.setCodePin(signataireV2.getCodePin());
+                operationSignature.setCodePin(signataireV2.getCode_pin());
                 operationSignature.setSignerKey(signataireV2.getSignerKey());
                 operationSignature.setIdCoSigner(orgId);
                 Worker worker = restTemplate.getForObject(urlNomWorker, Worker.class);
@@ -2896,17 +2896,17 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
         if (signataireV2 != null) {
             System.out.println("TESTV2");
 
-            if (!encrypterPin(codePin).equals(signataireV2.getCodePin())) {
+            if (!encrypterPin(codePin).equals(signataireV2.getCode_pin())) {
                 System.out.println("TESTCodePin");
-                logger.info("Code pin lors de la signature: " + signataireV2.getCodePin());
+                logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
                 compteurErreur2++;
             }
         }
         if (signataire != null) {
             System.out.println("TESTV1");
 
-            if (!encrypterPin(codePin).equals(signataire.getCodePin())) {
-                logger.info("Code pin lors de la signature: " + signataire.getCodePin());
+            if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
                 compteurErreur2++;
             }
         }

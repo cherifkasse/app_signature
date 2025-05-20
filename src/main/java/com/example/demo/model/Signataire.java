@@ -33,7 +33,7 @@ public class Signataire {
    // private String application_rattachee;
     private String nomApplication;
     @NotBlank(message = "Le code pin ne doit pas etre vide!")
-    private String codePin;
+    private String code_pin;
     @NotBlank(message = "L'adresse mail ne doit pas etre vide!")
     @Column(unique=true)
     private String email;
@@ -136,12 +136,12 @@ public class Signataire {
         this.nomSignataire = prenom_nom;
     }
 
-    public String getCodePin() {
-        return codePin;
+    public String getCode_pin() {
+        return code_pin;
     }
 
-    public void setCodePin(String code_pin) {
-        this.codePin = code_pin;
+    public void setCode_pin(String code_pin) {
+        this.code_pin = code_pin;
     }
 
     public String getEmail() {
