@@ -152,7 +152,7 @@
 		<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>
 			<artifactId>jackson-databind</artifactId>
-			<version>2.15.2</version> <!-- Vérifiez la dernière version disponible -->
+			<version>2.15.2</version>
 		</dependency>
 		<!-- https://mvnrepository.com/artifact/org.bouncycastle/bcpkix-jdk15on -->
 		<dependency>
@@ -171,12 +171,27 @@
 			<groupId>com.github.ben-manes.caffeine</groupId>
 			<artifactId>caffeine</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>io.github.hakky54</groupId>
+			<artifactId>sslcontext-kickstart</artifactId>
+			<version>6.5.0</version>
+		</dependency>
 
 		<!-- Reactor Extra pour CacheMono / CacheFlux -->
 		<dependency>
 			<groupId>io.projectreactor.addons</groupId>
 			<artifactId>reactor-extra</artifactId>
 			<version>3.5.0</version> <!-- vérifie la dernière version -->
+		</dependency>
+
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpclient</artifactId>
+			<version>4.5.14</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.httpcomponents.client5</groupId>
+			<artifactId>httpclient5</artifactId>
 		</dependency>
 
 	</dependencies>

@@ -250,10 +250,10 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
     @ApiImplicitParams({
-            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int", paramType = "query", example = "123"),
-            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file", paramType = "formData",example = "exemple.pdf"),
-            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String", paramType = "query", example = "1234"),
-            @ApiImplicitParam(name = "id_signer", value = "Numéro unique d'enrôlement du signataire.", dataType = "int", paramType = "path", example = "456")
+            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int",dataTypeClass = Integer.class, paramType = "query", example = "123"),
+            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file",dataTypeClass = File.class, paramType = "formData",example = "exemple.pdf"),
+            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String",dataTypeClass = String.class, paramType = "query", example = "1234"),
+            @ApiImplicitParam(name = "id_signer", value = "Numéro unique d'enrôlement du signataire.", dataType = "int",dataTypeClass = Integer.class, paramType = "path", example = "456")
     })
     public ResponseEntity<?> Signature_base2(
             @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId") Integer idWorker,
@@ -327,20 +327,26 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Utilisateur inconnu !");
             }
 //
-//            if(signataire != null && signataireV2 != null) {
-//                boolean verifSignatairePin = encrypterPin(codePin).equals(signataire.getCode_pin());
-//                boolean verifSignataireV2Pin = encrypterPin(codePin).equals(signataireV2.getCode_pin());
-//                if(verifSignatairePin && !verifSignataireV2Pin) {
-//                    signataireV2 = null;
-//                }
-//                if(!verifSignatairePin && verifSignataireV2Pin) {
-//                    signataire = null;
-//                }
-//                if(!verifSignatairePin && !verifSignataireV2Pin) {
-//                   return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez fournir un bon code PIN !");
-//                }
-//
-//            }
+            if(signataire != null && signataireV2 != null) {
+                System.out.println("DEbut verification");
+                boolean verifSignatairePin = encrypterPin(codePin).equals(signataire.getCode_pin());
+                boolean verifSignataireV2Pin = encrypterPin(codePin).equals(signataireV2.getCode_pin());
+                System.out.println("Code pin signataire :"+signataire.getCode_pin());
+                System.out.println("Code pin signer :"+signataireV2.getCode_pin());
+                if(verifSignatairePin && !verifSignataireV2Pin) {
+                    System.out.println("Code pin signataire :"+signataire.getCode_pin());
+                    signataireV2 = null;
+                }
+                if(!verifSignatairePin && verifSignataireV2Pin) {
+                    System.out.println("Code pin signer :"+signataireV2.getCode_pin());
+                    signataire = null;
+                }
+                if(!verifSignatairePin && !verifSignataireV2Pin) {
+                    System.out.println("Aucun des cas");
+                   return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Veuillez fournir un bon code PIN !");
+                }
+
+            }
 
             if (signataireV2 != null) {
                 //System.out.println("TESTV2");
@@ -352,6 +358,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
 
                 if (!encrypterPin(codePin).equals(signataireV2.getCode_pin())) {
                     logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
+                    System.out.println("Code pin :"+signataire.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
@@ -385,8 +392,9 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
 //                    System.out.println("ID APP Requete:"+worker.getIdWorker());
 //                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("SignerId not associated with this application Id !");
 //                }
-                if (!encrypterPin(codePin).equals(signataire.getCode_pin())) {
+                if (!(encrypterPin(codePin).equals(signataire.getCode_pin()))) {
                     logger.info("Code pin lors de la signature: " + signataire.getCode_pin());
+
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
@@ -830,7 +838,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
 
     }
 
-    @PostMapping("decrypt/{pinEncrypted}")
+   // @PostMapping("decrypt/{pinEncrypted}")
 
     public String decryptPin(@PathVariable String pinEncrypted) {
         try {
@@ -1069,8 +1077,8 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
     @ApiImplicitParams({
-            @ApiImplicitParam(name = "idSignataire", value = "L'identifiant du signataire.", dataType = "int", paramType = "query", example = "123"),
-            @ApiImplicitParam(name = "piece_cni", value = "Le document justificatif de la pièce d'identité (photo, pdf, ...) sous format tableau de bytes.", dataType = "file", paramType = "query"),
+            @ApiImplicitParam(name = "idSignataire", value = "L'identifiant du signataire.", dataType = "int",dataTypeClass = Integer.class, paramType = "query", example = "123"),
+            @ApiImplicitParam(name = "piece_cni", value = "Le document justificatif de la pièce d'identité (photo, pdf, ...) sous format tableau de bytes.", dataType = "file",dataTypeClass = File.class, paramType = "query"),
     })
     public ResponseEntity<String> uploadPieceIdentite(@PathVariable Integer idSignataire,
                                                       @RequestParam("piece_cni") @ApiParam(value = "Le document justificatif de la pièce d'identité (photo, pdf, ...) sous format tableau de bytes.") MultipartFile file) {
@@ -1258,12 +1266,12 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
     @ApiImplicitParams({
-            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int", paramType = "query", example = "123"),
-            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file", paramType = "formData",example = "exemple.pdf"),
-            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String", paramType = "query", example = "1234"),
-            @ApiImplicitParam(name = "id_signer", value = "Numéro unique d'enrôlement du signataire.", dataType = "int", paramType = "path", example = "456"),
-            @ApiImplicitParam(name = "X", value = "Optionnel\nPartie X des coordonnées (x,y) pour la position de départ du code QR.", dataType = "int", paramType = "query", example = "100"),
-            @ApiImplicitParam(name = "Y", value = "Optionnel\nPartie Y des coordonnées (x,y) pour la position de départ du code QR.", dataType = "int", paramType = "query", example = "100"),
+            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int",dataTypeClass = Integer.class, paramType = "query", example = "123"),
+            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file",dataTypeClass = File.class, paramType = "formData",example = "exemple.pdf"),
+            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String",dataTypeClass = String.class, paramType = "query", example = "1234"),
+            @ApiImplicitParam(name = "id_signer", value = "Numéro unique d'enrôlement du signataire.", dataType = "int",dataTypeClass = Integer.class, paramType = "path", example = "456"),
+            @ApiImplicitParam(name = "X", value = "Optionnel\nPartie X des coordonnées (x,y) pour la position de départ du code QR.", dataType = "int",dataTypeClass = Integer.class, paramType = "query", example = "100"),
+            @ApiImplicitParam(name = "Y", value = "Optionnel\nPartie Y des coordonnées (x,y) pour la position de départ du code QR.", dataType = "int",dataTypeClass = Integer.class, paramType = "query", example = "100"),
     })
     public ResponseEntity<?> Signature_base_qr_code(
             @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId", required = false) Integer idWorker,
@@ -1571,12 +1579,12 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
     @ApiImplicitParams({
-            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int", paramType = "query", example = "123"),
-            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file", paramType = "formData",example = "exemple.pdf"),
-            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String", paramType = "query", example = "1234"),
-            @ApiImplicitParam(name = "id_signer", value = "Numéro unique d'enrôlement du signataire.", dataType = "int", paramType = "path", example = "456"),
-            @ApiImplicitParam(name = "X", value = "Optionnel\nCoordonnée X pour la position du code QR.", dataType = "int", paramType = "path", example = "100"),
-            @ApiImplicitParam(name = "Y", value = "Optionnel\nCoordonnée Y pour la position du code QR.", dataType = "int", paramType = "path", example = "100"),
+            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int",dataTypeClass = Integer.class, paramType = "query", example = "123"),
+            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file",dataTypeClass = File.class, paramType = "formData",example = "exemple.pdf"),
+            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String",dataTypeClass = String.class, paramType = "query", example = "1234"),
+            @ApiImplicitParam(name = "id_signer", value = "Numéro unique d'enrôlement du signataire.", dataType = "int",dataTypeClass = Integer.class, paramType = "path", example = "456"),
+            @ApiImplicitParam(name = "X", value = "Optionnel\nCoordonnée X pour la position du code QR.", dataType = "int",dataTypeClass = Integer.class, paramType = "path", example = "100"),
+            @ApiImplicitParam(name = "Y", value = "Optionnel\nCoordonnée Y pour la position du code QR.", dataType = "int",dataTypeClass = Integer.class, paramType = "path", example = "100"),
     })
     public ResponseEntity<?> Signature_base_image(
             @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId") Integer idWorker,
@@ -1875,8 +1883,8 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
 //    @ApiImplicitParams({
-//            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int", paramType = "query", example = "10"),
-//            @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file", paramType = "formData",example = "exemple.pdf")
+//            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int",dataTypeClass = Integer.class, paramType = "query", example = "10"),
+//            @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file",dataTypeClass = File.class, paramType = "formData",example = "exemple.pdf")
 //
 //    })
     public ResponseEntity<?> Signature_base_workerID(
@@ -2452,11 +2460,11 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             @ApiResponse(code = 500, message = "Une erreur interne du serveur s’est produite")
     })
     @ApiImplicitParams({
-            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int", paramType = "query", example = "123"),
-            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file", paramType = "formData",example = "exemple.pdf"),
-            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String", paramType = "query", example = "1234"),
-            @ApiImplicitParam(name = "id_signer", value = "L'id du premier intervenant.", dataType = "int", paramType = "path", example = "456"),
-            @ApiImplicitParam(name = "orgId", value = "L'id du deuxième intervenant.", dataType = "int", paramType = "query", example = "45")
+            @ApiImplicitParam(name = "workerId", value = "ID de l'application appelante fourni par GAINDE 2000.", dataType = "int",dataTypeClass = Integer.class, paramType = "query", example = "123"),
+            // @ApiImplicitParam(name = "filereceivefile", value = "Le document PDF à signer sous format tableau de bytes.", dataType = "file",dataTypeClass = File.class, paramType = "formData",example = "exemple.pdf"),
+            @ApiImplicitParam(name = "codePin", value = "Code pour activer les informations du signataire sur le serveur de signature.", dataType = "String",dataTypeClass = String.class, paramType = "query", example = "1234"),
+            @ApiImplicitParam(name = "id_signer", value = "L'id du premier intervenant.", dataType = "int",dataTypeClass = Integer.class, paramType = "path", example = "456"),
+            @ApiImplicitParam(name = "orgId", value = "L'id du deuxième intervenant.", dataType = "int",dataTypeClass = Integer.class, paramType = "query", example = "45")
     })
     public ResponseEntity<?> double_ignature_base2(
             @ApiParam(value = "ID de l'application appelante fourni par GAINDE 2000.") @RequestParam(value = "workerId", required = false) Integer idWorker,
@@ -2809,7 +2817,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
         return ResponseEntity.ok(response.getBody());
     }
 
-    @PostMapping("save-code")
+    //@PostMapping("save-code")
     public ResponseEntity<String> saveCode(@RequestBody String code) {
         String filePath = "D:\\code.txt";
 

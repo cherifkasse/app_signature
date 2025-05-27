@@ -33,6 +33,7 @@ public class Signataire {
    // private String application_rattachee;
     private String nomApplication;
     @NotBlank(message = "Le code pin ne doit pas etre vide!")
+    @Column(name = "code_pin")
     private String code_pin;
     @NotBlank(message = "L'adresse mail ne doit pas etre vide!")
     @Column(unique=true)

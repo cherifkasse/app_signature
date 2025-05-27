@@ -8,10 +8,10 @@ import org.springframework.web.client.RestTemplate;
  * @author : Mamadou Cherif KASSE
  * @version : 1.0
  * @email : mamadoucherifkasse@gmail.com
- * @created : 06/05/2025, mardi
+ * @created : 30/04/2025, mercredi
  */
 @Configuration
-public class RestTemplateConfig {
+public class ConfigRestTemplate {
     @Bean
     public RestTemplate restTemplate() {
         return new RestTemplate();
