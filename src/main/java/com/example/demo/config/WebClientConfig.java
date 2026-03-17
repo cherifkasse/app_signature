@@ -14,6 +14,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 public class WebClientConfig {
     @Bean
     public WebClient webClient() {
-        return WebClient.builder().build();
+        return WebClient.builder()
+                .codecs(config -> config.defaultCodecs().maxInMemorySize(20 * 1024 * 1024)) // 20 MB
+                .build();
+
     }
 }

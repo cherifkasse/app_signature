@@ -358,7 +358,6 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
 
                 if (!encrypterPin(codePin).equals(signataireV2.getCode_pin())) {
                     logger.info("Code pin lors de la signature: " + signataireV2.getCode_pin());
-                    System.out.println("Code pin :"+signataire.getCode_pin());
                     compteurErreur++;
                 } else {
                     compteurErreur = 3;
@@ -479,7 +478,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             String password = prop.getProperty("password_keystore");
 
             System.setProperty("javax.net.ssl.keyStore", keyStoreLocation);
-            System.setProperty("javax.net.ssl.password", password);
+            System.setProperty("javax.net.ssl.keyStorePassword", password);
             System.setProperty("javax.net.ssl.trustStore", trustStoreLocation);
             System.setProperty("javax.net.ssl.trustStorePassword", password);
 
@@ -537,12 +536,14 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
 //            HttpEntity<OperationSignature> requestEntity = new HttpEntity<>(operationSignature, headers2);
             // Envoyer la requête HTTP POST
 //            ResponseEntity<OperationSignature> responseEntity = restTemplate.postForEntity(url2, requestEntity, OperationSignature.class);
-          webClient.post()
+            logger.info("Debut enregistrement opérations de signature");
+            webClient.post()
                     .uri(url2)
                     .headers(headersClient -> headersClient.addAll(headers2)) // headers2 est un HttpHeaders
                     .bodyValue(operationSignature)
                     .retrieve()
-                    .bodyToMono(OperationSignature.class);
+                    .bodyToMono(OperationSignature.class)
+                    .block();
 
             logDuration("Signature document", startCheckUid);
 
@@ -578,7 +579,6 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
         }
 
 
-
     }
 
 
@@ -597,6 +597,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
     })
     @ResponseStatus(HttpStatus.OK)
     public ResponseEntity<?> appelerEnroll(@RequestBody SignataireRequest_V2 signataireRequest, HttpServletRequest request) {
+
         String urlAccess = prop.getProperty("url_access");
        // RestTemplate restTemplate = new RestTemplate();
         logger.info("Requête reçue : {}", signataireRequest.toString());
@@ -608,8 +609,10 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 signataireRequest.getTelephone(),
                 signataireRequest.getIdApplication());
 
-        String url = urlAccess + "findSignerByCni/" + signataireRequest.getCni();
-        String urlNomSigner = urlAccess + "findSignerBynomSigner/" + signataireRequest.getNomSignataire() + signataireRequest.getIdApplication();
+        String url = urlAccess + "findSignerByCni/" + signataireRequest.getCni().trim();
+
+
+        String urlNomSigner = urlAccess + "findSignerBynomSigner/" + signataireRequest.getNomSignataire().trim() + signataireRequest.getIdApplication().toString().trim();
         String urlIdApp = urlAccess + "findSignerByIdApp/" + signataireRequest.getIdApplication();
         String apiUrl = urlAccess + "enroll";
         String urlControlCert = urlAccess + "checkUid";
@@ -620,11 +623,11 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
         Worker workerName = restTemplate.getForObject(urlNomWorker, Worker.class);
         Date date_creation = new Date();
         SimpleDateFormat sdf2 = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-        String messageRetourDecouper = decouper_nom(signataireRequest.getNomSignataire().trim().toUpperCase()) + signataireRequest.getIdApplication().toString();
+        String messageRetourDecouper = decouper_nom(signataireRequest.getNomSignataire().trim().toUpperCase()) + signataireRequest.getIdApplication().toString().trim();
         if (messageRetourDecouper.equals("Tableau vide!")) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur: Informations absentes.");
         }
-        String cle_de_signature2 = prop.getProperty("aliasCle") + messageRetourDecouper + "_" + signataireRequest.getCni();
+        String cle_de_signature2 = prop.getProperty("aliasCleSigner") + messageRetourDecouper + "_" + signataireRequest.getCni();
 
         if (cle_de_signature2.length() > 50) {
             cle_de_signature2 = cle_de_signature2.substring(0, 50);
@@ -654,6 +657,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             }
 
             ResponseEntity<Signataire_V2[]> signataireV2 = restTemplate.getForEntity(url, Signataire_V2[].class);
+
             ResponseEntity<Signataire_V2[]> signataireV2_nom = restTemplate.getForEntity(urlNomSigner, Signataire_V2[].class);
             boolean verifWoker = false;
             if (signataireRequest.getIdApplication() == null || signataireRequest.getNomSignataire() == null
@@ -662,13 +666,13 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 logger.info(retourMessage);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(retourMessage);
             }
-            if (signataireRequest.getCni().length() < 5 || signataireRequest.getCni().length() > 15) {
+            if (signataireRequest.getCni().trim().length() < 5 || signataireRequest.getCni().trim().length() > 15) {
                 String retourMessage = "La CNI/Passport doit contenir entre 5 et 15 caractères.";
                 logger.info(retourMessage);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(retourMessage);
             }
             // Vérification du format alphanumérique
-            if (!signataireRequest.getCni().matches("^[a-zA-Z0-9]+$")) {
+            if (!signataireRequest.getCni().trim().matches("^[a-zA-Z0-9]+$")) {
                 String retourMessage = "La CNI/Passport doit être alphanumérique (sans caractères spéciaux).";
                 logger.info(retourMessage);
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(retourMessage);
@@ -706,7 +710,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 boolean existe = false;
 
                 for (Signataire_V2 signataire : signatairesList) {
-                    boolean memeCni = signataire.getCni().equals(signataireRequest.getCni());
+                    boolean memeCni = signataire.getCni().trim().equals(signataireRequest.getCni().trim());
                     boolean memeIdApp = signataire.getIdApplication().equals(signataireRequest.getIdApplication());
 
                     if (memeCni && memeIdApp) {
@@ -728,9 +732,9 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                         Signataire_V2 signataire_v2 = new Signataire_V2();
                         HttpHeaders headers2 = new HttpHeaders();
                         headers2.setContentType(MediaType.APPLICATION_JSON);
-                        signataire_v2.setNomSignataire(signatairesList_Noms.get(0).getNomSignataire());
+                        signataire_v2.setNomSignataire(signatairesList_Noms.get(0).getNomSignataire().trim());
                         signataire_v2.setCni(signatairesList.get(0).getCni());
-                        signataire_v2.setTelephone(signatairesList_Noms.get(0).getTelephone());
+                        signataire_v2.setTelephone(signatairesList_Noms.get(0).getTelephone().trim());
                         signataire_v2.setIdApplication(signatairesList_Noms.get(0).getIdApplication());
                         Worker worker = restTemplate.getForObject(urlNomWorker, Worker.class);
                         assert worker != null;
@@ -783,7 +787,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             // boolean verifWoker = Boolean.FALSE.equals(restTemplate.getForEntity(urlIdApp, Boolean.class));
 
 
-            if (signataireRequest.getNomSignataire() == null || signataireRequest.getNomSignataire().isEmpty() ||
+            if (signataireRequest.getNomSignataire() == null || signataireRequest.getNomSignataire().trim().isEmpty() ||
                     signataireRequest.getCni() == null || signataireRequest.getCni().isEmpty()) {
                 String badRequestMessage = "Verifiez si vous avez rempli toutes les informations";
                 logger.warn(badRequestMessage);
@@ -791,7 +795,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             }
 
             HttpEntity<SignataireRequest_V2> requestEntity = new HttpEntity<>(signataireRequest, headers);
-            if (Objects.equals(signataireRequest.getNomSignataire(), " ")) {
+            if (Objects.equals(signataireRequest.getNomSignataire().trim(), " ")) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Vérifiez vos informations.");
             }
             ResponseEntity<String> response = restTemplate.postForEntity(apiUrl, requestEntity, String.class);
@@ -1410,7 +1414,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             String trustStoreLocation = prop.getProperty("trustore1");
 
             String password = prop.getProperty("password_keystore");
-
+            System.out.println("PASSS :"+password);
             System.setProperty("javax.net.ssl.keyStore", keyStoreLocation);
             System.setProperty("javax.net.ssl.password", password);
             System.setProperty("javax.net.ssl.trustStore", trustStoreLocation);
@@ -1993,6 +1997,8 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
             }
             ClientWSService service = new ClientWSService(wsdlURL);
             ClientWS port = service.getClientWSPort();
+            // IMPORTANT : forcer l’adresse d’appel SOAP (sans ?wsdl)
+
             // System.out.println("#####PORT "+userkey);
             try {
                 setupTLS_sans_nom(port, password);
@@ -2856,7 +2862,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
         //System.out.println("1er caractere : "+nomAChanger.charAt(0));
         if (nomAChanger.contains(" ")) {
             String[] caract = nomAChanger.split("\\s+");
-            logger.info("Caracteres du tableau :"+caract.toString());
+            //logger.info("Caracteres du tableau :"+caract.toString());
             if (caract.length < 1) {
                 return "Tableau vide!";
             }
@@ -2864,13 +2870,13 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
                 return "Tableau vide!";
             }
             nomAChanger = caract[0] + "_";
-            logger.info("caract de 0 :"+caract[0]);
-            logger.info("Taille du tableau :"+caract.length);
+            //logger.info("caract de 0 :"+caract[0]);
+            //logger.info("Taille du tableau :"+caract.length);
             if (caract.length > 1) {
                 for (int i = 1; i < caract.length; i++) {
-                    logger.info("Dans la boucle FOR");
+              //      logger.info("Dans la boucle FOR");
                     if (!caract[i].trim().isEmpty()) {
-                        logger.info("caract de "+i+" :"+caract[i]);
+                //        logger.info("caract de "+i+" :"+caract[i]);
                         nomAChanger += caract[i].charAt(0);
                     }
                 }
@@ -2880,7 +2886,7 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
         if (nomAChanger.length() > 70) {
             nomAChanger = nomAChanger.substring(0, 70);
         }
-        logger.info("Nom caractere :"+nomAChanger);
+        //logger.info("Nom caractere :"+nomAChanger);
         return nomAChanger;
     }
 
@@ -3056,6 +3062,35 @@ private static TrustManager[] getTrustManagers(KeyStore trustStore)
     public Worker getWorker(Integer idWorker) {
         String url = urlAccessBdd + "findNomWorkerById/" + idWorker;
         return restTemplate.getForObject(url, Worker.class);
+    }
+
+    public String verifNomSignataire(String input) {
+        if (input == null || input.isEmpty()) {
+            return input;
+        }
+
+        String[] words = input.trim().split("\\s+");
+
+        if (words.length < 2) {
+            return input; // Pas assez de mots pour faire une fusion
+        }
+
+        String last = words[words.length - 1];
+        String secondLast = words[words.length - 2];
+
+        // Vérifier si le dernier mot est numérique
+        if (last.matches("\\d+")) {
+            StringBuilder result = new StringBuilder();
+
+            for (int i = 0; i < words.length - 2; i++) {
+                result.append(words[i]).append(" ");
+            }
+
+            result.append(secondLast).append(last); // Fusionner les deux derniers
+            return result.toString();
+        }
+
+        return input; // Aucun changement
     }
 }
 

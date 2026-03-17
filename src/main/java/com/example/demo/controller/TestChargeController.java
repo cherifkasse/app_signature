@@ -1,5 +1,6 @@
 package com.example.demo.controller;
 
+import com.example.demo.config.SslRestTemplateFactory;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,11 +37,15 @@ public class TestChargeController {
     private String nombreTours;
 
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
     private final ObjectMapper mapper = new ObjectMapper();
     Random random = new Random();
     String[] prenoms = {"Mame", "Cheikh", "Awa", "Fatou", "Seynabou", "Aliou", "Diop", "Ndiaye"};
     String[] noms = {"Sarr", "Ba", "Fall", "Diagne", "Ndoye", "Camara", "Sow", "Faye"};
+
+    public TestChargeController(RestTemplate restTemplate) throws Exception {
+        this.restTemplate =  SslRestTemplateFactory.createRestTemplateWithClientCert();
+    }
 
     @PostMapping("/run")
     public ResponseEntity<?> runSimulation() throws Exception {
